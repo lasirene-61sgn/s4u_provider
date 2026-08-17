@@ -10,40 +10,48 @@ import '../../earnings/riverpod/earnings_notifier.dart';
 
 class BookingsState {
   final bool isLoading;
+  final bool isDetailLoading;
   final bool isFetchingMore;
   final List<Booking> bookings;
   final String? error;
   final int page;
   final bool hasMore;
   final int downloadingInvoiceId;
+  final BookingDetailResponse? currentBookingDetail;
 
   BookingsState({
     this.isLoading = false,
+    this.isDetailLoading = false,
     this.isFetchingMore = false,
     this.bookings = const [],
     this.error,
     this.page = 1,
     this.hasMore = true,
     this.downloadingInvoiceId = -1,
+    this.currentBookingDetail,
   });
 
   BookingsState copyWith({
     bool? isLoading,
+    bool? isDetailLoading,
     bool? isFetchingMore,
     List<Booking>? bookings,
     String? error,
     int? page,
     bool? hasMore,
     int? downloadingInvoiceId,
+    BookingDetailResponse? currentBookingDetail,
   }) {
     return BookingsState(
       isLoading: isLoading ?? this.isLoading,
+      isDetailLoading: isDetailLoading ?? this.isDetailLoading,
       isFetchingMore: isFetchingMore ?? this.isFetchingMore,
       bookings: bookings ?? this.bookings,
       error: error ?? this.error,
       page: page ?? this.page,
       hasMore: hasMore ?? this.hasMore,
       downloadingInvoiceId: downloadingInvoiceId ?? this.downloadingInvoiceId,
+      currentBookingDetail: currentBookingDetail ?? this.currentBookingDetail,
     );
   }
 }
@@ -98,6 +106,27 @@ class BookingsNotifier extends Notifier<BookingsState> {
     await _fetchBookings(loadMore: false, search: search);
   }
 
+  Future<void> fetchBookingDetail(int bookingId) async {
+    state = state.copyWith(isDetailLoading: true, currentBookingDetail: null);
+    try {
+      final res = await _api.post(
+        endpoint: '/booking-detail',
+        body: {'booking_id': bookingId},
+      );
+      if (res is Map && res['status'] == 1 && res['data'] != null) {
+        state = state.copyWith(
+          isDetailLoading: false,
+          currentBookingDetail: BookingDetailResponse.fromJson(res['data']),
+        );
+      } else {
+        state = state.copyWith(isDetailLoading: false);
+      }
+    } catch (e) {
+      debugPrint('Error fetching booking detail: $e');
+      state = state.copyWith(isDetailLoading: false);
+    }
+  }
+
   Future<void> assignHandyman(int bookingId, int handymanId) async {
     try {
       final res = await _api.post(
@@ -107,6 +136,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Handyman assigned successfully', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
       } else {
         Fluttertoast.showToast(msg: (res is Map ? res['message']?.toString() : null) ?? 'Failed to assign handyman', backgroundColor: Colors.red, textColor: Colors.white);
@@ -125,6 +157,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Completion confirmed successfully', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
         ref.invalidate(earningsProvider);
       } else {
@@ -143,6 +178,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Job confirmed successfully', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
         ref.invalidate(earningsProvider);
       } else {
@@ -167,6 +205,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Booking action successful', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
         ref.invalidate(earningsProvider);
       } else {
@@ -192,6 +233,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Proof uploaded successfully', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
       } else {
         Fluttertoast.showToast(msg: (res is Map ? res['message']?.toString() : null) ?? 'Failed to upload proof', backgroundColor: Colors.red, textColor: Colors.white);
@@ -210,6 +254,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Booking status updated', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
         ref.invalidate(earningsProvider);
       } else {
@@ -228,6 +275,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Marked as arrived', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
       } else {
         Fluttertoast.showToast(msg: (res is Map ? res['message']?.toString() : null) ?? 'Failed to mark arrived', backgroundColor: Colors.red, textColor: Colors.white);
@@ -246,6 +296,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'OTP verified successfully', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
         return true;
       } else {
@@ -267,6 +320,9 @@ class BookingsNotifier extends Notifier<BookingsState> {
       if (res is Map && (res['status'] == 1 || res['status'] == true)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Completion OTP verified', backgroundColor: Colors.green, textColor: Colors.white);
         await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
         ref.invalidate(dashboardProvider);
         ref.invalidate(earningsProvider);
         return true;

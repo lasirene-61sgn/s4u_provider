@@ -44,12 +44,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_selectedBookingId != null) {
-      return BookingDetailsScreen(
-        bookingId: _selectedBookingId!,
-        onBack: () => setState(() => _selectedBookingId = null),
-      );
-    }
+
 
     final state = ref.watch(bookingsProvider);
     const bool isMobile = true;
@@ -197,9 +192,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
 
     return InkWell(
       onTap: () {
-        setState(() {
-          _selectedBookingId = booking.id;
-        });
+        Get.to(() => BookingDetailsScreen(bookingId: booking.id));
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -304,9 +297,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
 
     return InkWell(
       onTap: () {
-        setState(() {
-          _selectedBookingId = booking.id;
-        });
+        Get.to(() => BookingDetailsScreen(bookingId: booking.id));
       },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),

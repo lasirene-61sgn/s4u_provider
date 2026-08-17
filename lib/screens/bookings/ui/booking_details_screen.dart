@@ -29,6 +29,7 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(bookingsProvider.notifier).fetchBookingDetail(widget.bookingId);
       if (ref.read(bookingsProvider).bookings.isEmpty) {
         ref.read(bookingsProvider.notifier).refresh();
       }
@@ -45,19 +46,24 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(bookingsProvider);
 
-    if (state.isLoading && state.bookings.isEmpty) {
+    if (state.isLoading && state.bookings.isEmpty && state.isDetailLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    final booking = state.bookings.firstWhereOrNull((b) => b.id == widget.bookingId);
-    final b = booking ?? (Get.arguments as Booking?);
+    final detail = state.currentBookingDetail;
+    Booking? b;
+    if (detail?.bookingDetail != null) {
+      b = detail!.bookingDetail;
+    } else {
+      b = state.bookings.firstWhereOrNull((b) => b.id == widget.bookingId) ?? (Get.arguments as Booking?);
+    }
 
-    if (b == null) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
+        if (b == null) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF8FAFC),
+            appBar: AppBar(
           title: const Text('Booking Details', style: TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.white,
           foregroundColor: AppColors.textSecondary,
@@ -86,6 +92,7 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
       );
     }
 
+    final bookingData = b;
     final content = LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth > 850;
@@ -94,8 +101,6 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildTopBar(b, state),
-                const SizedBox(height: 20),
                 if (isWide)
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,27 +109,27 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                         flex: 7,
                         child: Column(
                           children: [
-                            _buildDetailsBox(b),
+                            _buildDetailsBox(bookingData, detail),
                             const SizedBox(height: 20),
-                            _buildUserProviderCards(b),
+                            _buildUserProviderCards(bookingData, detail),
                           ],
                         ),
                       ),
                       const SizedBox(width: 20),
                       Expanded(
                         flex: 3,
-                        child: _buildPaymentSummary(b),
+                        child: _buildPaymentSummary(bookingData),
                       ),
                     ],
                   )
                 else
                   Column(
                     children: [
-                      _buildDetailsBox(b),
+                      _buildDetailsBox(bookingData, detail),
                       const SizedBox(height: 16),
-                      _buildUserProviderCards(b),
+                      _buildUserProviderCards(bookingData, detail),
                       const SizedBox(height: 16),
-                      _buildPaymentSummary(b),
+                      _buildPaymentSummary(bookingData),
                     ],
                   ),
               ],
@@ -133,84 +138,83 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
         },
       );
 
+    final appBar = _buildAppBar(bookingData, state, detail);
+
     if (widget.onBack != null) {
-      return Container(
-        color: const Color(0xFFF8FAFC),
-        child: content,
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: appBar,
+        body: content,
       );
     }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      appBar: appBar,
       body: content,
     );
   }
 
-  // ─────────────────── TOP BAR ───────────────────
-  Widget _buildTopBar(Booking b, BookingsState state) {
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 16,
-      runSpacing: 16,
-      children: [
-
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            if (b.bookingStatus?.toLowerCase() == 'completed')
-              state.downloadingInvoiceId == b.id
-                ? ElevatedButton(
-                    onPressed: null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      disabledBackgroundColor: AppColors.primary.withOpacity(0.7),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const SizedBox(
-                      width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-                    ),
-                  )
-                : ElevatedButton.icon(
-                    onPressed: () async => await ref.read(bookingsProvider.notifier).downloadInvoice(b.id),
-                    icon: const Icon(Icons.download, size: 16),
-                    label: const Text('Download Invoice', style: TextStyle(fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (widget.onBack != null) {
-                  widget.onBack!();
-                } else {
-                  Get.back();
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+  // ─────────────────── APP BAR ───────────────────
+  PreferredSizeWidget _buildAppBar(Booking b, BookingsState state, BookingDetailResponse? detail) {
+    return AppBar(
+      backgroundColor: Colors.white,
+      foregroundColor: AppColors.textPrimary,
+      elevation: 0,
+      centerTitle: true,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () {
+          if (widget.onBack != null) {
+            widget.onBack!();
+          } else {
+            Get.back();
+          }
+        },
+      ),
+      title: Text(
+        b.serviceName ?? 'Booking Details',
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        overflow: TextOverflow.ellipsis,
+      ),
+      actions: [
+        if (detail?.bookingActivity.isNotEmpty ?? false)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: TextButton.icon(
+              onPressed: () => _showStatusHistoryDialog(context, detail!.bookingActivity),
+              icon: const Icon(Icons.history, size: 18),
+              label: const Text('Status View'),
+              style: TextButton.styleFrom(
                 foregroundColor: AppColors.primary,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('<< BACK', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
-          ],
-        ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _statusColor(b.bookingStatus).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                (b.bookingStatus ?? 'Unknown').toUpperCase().replaceAll('_', ' '),
+                style: TextStyle(color: _statusColor(b.bookingStatus), fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ),
+          )
       ],
     );
   }
 
   // ─────────────────── BOOKING DETAILS BOX ───────────────────
-  Widget _buildDetailsBox(Booking booking) {
+  Widget _buildDetailsBox(Booking booking, BookingDetailResponse? detail) {
     return Container(
       decoration: _card(),
       padding: const EdgeInsets.all(24),
@@ -256,7 +260,7 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildActionButtons(context, ref, booking),
+                _buildActionButtons(context, ref, booking, detail),
               ],
             ),
           ),
@@ -266,16 +270,39 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
   }
 
   // ─────────────────── CUSTOMER, PROVIDER, HANDYMAN CARDS ───────────────────
-  Widget _buildUserProviderCards(Booking booking) {
+  Widget _buildUserProviderCards(Booking booking, BookingDetailResponse? detail) {
     return LayoutBuilder(builder: (ctx, c) {
       final isWide = c.maxWidth > 800; // Use a wider breakpoint since we have 3 cards now
       
-      final customerCard = _personCard('Customer', booking.userName, booking.userPhone, booking.userEmail, booking.userImage, booking.address);
-      final providerCard = _personCard('Provider', booking.providerName, booking.providerPhone, booking.providerEmail, booking.providerImage, booking.providerAddress);
+      final customerCard = _personCard(
+        'Customer', 
+        detail?.customer?.displayName ?? booking.userName, 
+        detail?.customer?.contactNumber ?? booking.userPhone, 
+        detail?.customer?.email ?? booking.userEmail, 
+        detail?.customer?.profileImage ?? booking.userImage, 
+        detail?.customer?.address ?? booking.address
+      );
+      final providerCard = _personCard(
+        'Provider', 
+        detail?.providerData?.displayName ?? booking.providerName, 
+        detail?.providerData?.contactNumber ?? booking.providerPhone, 
+        detail?.providerData?.email ?? booking.providerEmail, 
+        detail?.providerData?.profileImage ?? booking.providerImage, 
+        detail?.providerData?.address ?? booking.providerAddress
+      );
       
       Widget? handymanCard;
-      if (booking.handymanName != null || booking.bookingStatus.contains('HANDYMAN') || booking.bookingStatus == 'ACCEPTED' || booking.bookingStatus.contains('ASSIGNED')) {
-        handymanCard = _personCard('Handyman', booking.handymanName, booking.handymanPhone, booking.handymanEmail, booking.handymanImage, booking.handymanAddress);
+      final hmData = (detail?.handymanData.isNotEmpty ?? false) ? detail!.handymanData.first : null;
+      
+      if (hmData != null || booking.handymanName != null || booking.bookingStatus.contains('HANDYMAN') || booking.bookingStatus == 'ACCEPTED' || booking.bookingStatus.contains('ASSIGNED')) {
+        handymanCard = _personCard(
+          'Handyman', 
+          hmData?.displayName ?? booking.handymanName, 
+          hmData?.contactNumber ?? booking.handymanPhone, 
+          hmData?.email ?? booking.handymanEmail, 
+          hmData?.profileImage ?? booking.handymanImage, 
+          hmData?.address ?? booking.handymanAddress
+        );
       }
 
       if (isWide) {
@@ -472,39 +499,31 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
   }
 
   // ─────────────────── ACTION BUTTONS (status-based, role-aware) ───────────────────
-  Widget _buildActionButtons(BuildContext context, WidgetRef ref, Booking booking) {
+  Widget _buildActionButtons(BuildContext context, WidgetRef ref, Booking booking, BookingDetailResponse? detail) {
     final status = (booking.bookingStatus ?? '').toLowerCase();
     final notifier = ref.read(bookingsProvider.notifier);
     final role = SharedPreferenceHelper.getString('role') ?? 'PROVIDER';
     final isHandyman = role == 'HANDYMAN';
 
-    Widget btn(String label, {Color bg = AppColors.primary, VoidCallback? onTap, IconData? icon}) {
-      return Container(
-        margin: const EdgeInsets.only(left: 8),
-        child: icon != null
-            ? ElevatedButton.icon(
-                icon: Icon(icon, size: 15),
-                label: Text(label),
-                onPressed: onTap,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: bg,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              )
-            : ElevatedButton(
-                onPressed: onTap,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: bg,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: Text(label),
-              ),
+    Widget btn(String label, {required Color bg, required IconData icon, required VoidCallback onTap}) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bg.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: bg),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(color: bg, fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
       );
     }
 
@@ -529,7 +548,7 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
     // ════════ BOOKING ACTION FLOW ════════
 
     // PENDING
-    if (status == 'pending' || status == 'pending_approval' || status == 'waiting') {
+    if (status == 'pending' || status == 'waiting') {
       return Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -542,9 +561,20 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
       );
     }
 
+    if (status == 'pending_approval') {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          btn('Complete', bg: const Color(0xFF10B981), icon: Icons.check_circle,
+              onTap: () => notifier.updateBookingStatus(booking.id, 'completed', paymentStatus: booking.paymentStatus ?? 'pending')),
+        ],
+      );
+    }
+
     // ACCEPT
     if (status == 'accept') {
-      final hasHandyman = booking.handymanName != null && booking.handymanName!.isNotEmpty;
+      final hasHandyman = (booking.handymanName != null && booking.handymanName!.isNotEmpty) || (detail?.handymanData.isNotEmpty ?? false);
       return Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -569,16 +599,28 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           statusBadge(status.replaceAll('_', ' ').toUpperCase(), color: _statusColor(status), icon: Icons.build),
-          if (status == 'in_progress')
-            btn('Complete', bg: const Color(0xFF10B981), icon: Icons.check_circle,
-                onTap: () => notifier.updateBookingStatus(booking.id, 'completed', paymentStatus: booking.paymentStatus ?? 'pending')),
+          if (status == 'in_progress') ...[
+            btn('Submit Proof', bg: const Color(0xFF635BFF), icon: Icons.upload_file,
+                onTap: () => _showSubmitProofDialog(context, ref, booking.id)),
+          ],
         ],
       );
     }
 
     // COMPLETED
     if (status == 'completed') {
-      return const SizedBox.shrink();
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (booking.paymentStatus?.toLowerCase() == 'pending' && booking.paymentId != null)
+            btn('Payment Approve', bg: const Color(0xFF10B981), icon: Icons.verified,
+                onTap: () => notifier.updateBookingStatus(booking.id, 'completed', paymentStatus: 'paid')),
+          if (booking.paymentStatus?.toLowerCase() == 'paid')
+            btn('Download Invoice', bg: const Color(0xFF635BFF), icon: Icons.download,
+                onTap: () => notifier.downloadInvoice(booking.id)),
+        ],
+      );
     }
 
     // Default: show status badge
@@ -587,6 +629,105 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
   }
 
   // ─────────────────── ASSIGN HANDYMAN DIALOG ───────────────────
+
+  void _showStatusHistoryDialog(BuildContext context, List<BookingActivity> activities) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (_, controller) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 16),
+                  const Text('Booking Tracking', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: activities.isEmpty
+                      ? const Center(child: Text('No tracking history available.', style: TextStyle(color: AppColors.textMuted)))
+                      : ListView.builder(
+                          controller: controller,
+                          itemCount: activities.length,
+                          itemBuilder: (ctx, i) {
+                            final activity = activities[i];
+                            final isLast = i == activities.length - 1;
+                            final isFirst = i == 0;
+                            
+                            return IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const SizedBox(width: 24),
+                                  Column(
+                                    children: [
+                                      Container(
+                                        width: 2,
+                                        height: 24,
+                                        color: isFirst ? Colors.transparent : AppColors.primary,
+                                      ),
+                                      Container(
+                                        width: 14,
+                                        height: 14,
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.primary,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Container(
+                                          width: 2,
+                                          color: isLast ? Colors.transparent : AppColors.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(bottom: 24.0, top: 20),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            (activity.activityType ?? 'Unknown').replaceAll('_', ' ').toUpperCase(), 
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primary)
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(activity.activityMessage ?? '', style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                                          const SizedBox(height: 4),
+                                          Text(activity.datetime ?? '', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 24),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                  ),
+                ],
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
   void _showAssignHandymanDialog(BuildContext context, WidgetRef ref, int bookingId) {
     showDialog(
       context: context,
