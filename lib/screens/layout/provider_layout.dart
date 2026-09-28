@@ -13,7 +13,6 @@ import '../handyman/ui/handyman_ratings_screen.dart';
 import '../services/ui/addons_screen.dart';
 import '../services/ui/packages_screen.dart';
 import '../services/ui/requested_services_screen.dart';
-import '../services/ui/service_request_list_screen.dart';
 import '../services/ui/all_services_screen.dart';
 import '../promotion/ui/provider_promotional_banner_screen.dart';
 import '../earnings/ui/payments_screen.dart';
@@ -118,13 +117,13 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
       _role = SharedPreferenceHelper.getString('role') ?? 'PROVIDER';
       if (_role == 'HANDYMAN') {
         _pages = [
-          const DashboardScreen(),
+          DashboardScreen(onNavigate: _onNavigate),
           const BookingsScreen(),
           const PaymentsScreen(),
           const CashPaymentsScreen(),
           const HelpDeskScreen(),
           const ProfileScreen(),
-          const ProviderInfoScreen(), // index 6
+          ProviderInfoScreen(onNavigate: _onNavigate), // index 6
           const WalletHistoryScreen(), // index 7
         ];
         _navItems = [
@@ -145,7 +144,7 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
         ];
       } else {
         _pages = [
-          const DashboardScreen(),
+          DashboardScreen(onNavigate: _onNavigate),
           const BookingsScreen(),
           const AllServicesScreen(),
           const PackagesScreen(),
@@ -164,7 +163,7 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
           const UnassignedHandymanScreen(),
           const HandymanEarningScreen(),
           const HandymanCommissionScreen(),
-          const ProviderInfoScreen(),    // index 19
+          ProviderInfoScreen(onNavigate: _onNavigate),    // index 19
           const PostJobScreen(),         // index 20
           const WalletHistoryScreen(), // index 21
         ];
@@ -177,6 +176,7 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
           {'type': 'item', 'label': 'All Services', 'icon': Icons.design_services_outlined, 'pageIndex': 2},
           {'type': 'item', 'label': 'Packages', 'icon': Icons.inventory_2_outlined, 'pageIndex': 3},
           {'type': 'item', 'label': 'Addons', 'icon': Icons.extension_outlined, 'pageIndex': 4},
+          {'type': 'item', 'label': 'Post Job', 'icon': Icons.work_outline, 'pageIndex': 20},
           
           {'type': 'header', 'label': 'USER'},
           {
@@ -392,7 +392,8 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildBottomNavItem(Icons.home_outlined, Icons.home, 'Home', 0),
-                _buildBottomNavItem(Icons.design_services_outlined, Icons.design_services, 'Service', 1),
+                if (_role == 'PROVIDER')
+                  _buildBottomNavItem(Icons.design_services_outlined, Icons.design_services, 'Service', 1),
                 _buildBottomNavItem(Icons.book_online_outlined, Icons.book_online, 'Booking', 2),
                 _buildBottomNavItem(Icons.person_outline, Icons.person, 'Profile', 3),
               ],
@@ -476,7 +477,7 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(profile != null ? '${profile.firstName ?? ''} ${profile.lastName ?? ''}'.trim() : 'Loading...', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
+                      Text(profile != null ? '${profile.firstName} ${profile.lastName}'.trim() : 'Loading...', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
                       Text(profile?.email ?? '', style: const TextStyle(fontSize: 11, color: AppColors.textMuted), overflow: TextOverflow.ellipsis),
                     ],
                   ),
@@ -640,6 +641,7 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
   Widget _buildBottomNavItem(IconData unselectedIcon, IconData selectedIcon, String label, int index) {
     final isSelected = _getBottomNavIndex() == index;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         if (_role == 'PROVIDER') {
           if (index == 0) _onNavigate(0);
@@ -653,18 +655,21 @@ class _ProviderLayoutState extends ConsumerState<ProviderLayout> {
           else if (index == 3) _onNavigate(5); // Profile
         }
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
-        ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(isSelected ? selectedIcon : unselectedIcon, color: isSelected ? AppColors.primary : AppColors.textMuted, size: 24),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.primary.withOpacity(0.1) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(isSelected ? selectedIcon : unselectedIcon, color: isSelected ? AppColors.primary : AppColors.textMuted, size: 24),
+            ),
             const SizedBox(height: 4),
             Text(label, style: TextStyle(color: isSelected ? AppColors.primary : AppColors.textMuted, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, fontSize: 11)),
           ],

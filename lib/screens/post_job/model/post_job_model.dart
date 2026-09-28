@@ -1,20 +1,28 @@
 class PostJobService {
   final int id;
   final String name;
+  final String? description;
   final String? categoryName;
   final String? subcategoryName;
   final List<String> attachments;
+  final double? price;
   final String? priceFormat;
   final String? visitType;
+  final String? type;
+  final String? duration;
 
   PostJobService({
     required this.id,
     required this.name,
+    this.description,
     this.categoryName,
     this.subcategoryName,
     this.attachments = const [],
+    this.price,
     this.priceFormat,
     this.visitType,
+    this.type,
+    this.duration,
   });
 
   factory PostJobService.fromJson(Map<String, dynamic> json) {
@@ -27,11 +35,15 @@ class PostJobService {
     return PostJobService(
       id: json['id'] ?? 0,
       name: json['name']?.toString() ?? '',
+      description: json['description']?.toString(),
       categoryName: json['category_name']?.toString(),
       subcategoryName: json['subcategory_name']?.toString(),
       attachments: atts,
+      price: json['price'] != null ? (json['price'] as num).toDouble() : null,
       priceFormat: json['price_format']?.toString(),
       visitType: json['visit_type']?.toString(),
+      type: json['type']?.toString(),
+      duration: json['duration']?.toString(),
     );
   }
 }
@@ -40,10 +52,14 @@ class PostJob {
   final int id;
   final String title;
   final String? description;
+  final String? reason;
   final double price;
   final String status;
   final bool canBid;
+  final int? providerId;
   final int? customerId;
+  final String? customerName;
+  final String? customerProfile;
   final List<PostJobService> services;
   final String? createdAt;
   final double? jobPrice;
@@ -52,10 +68,14 @@ class PostJob {
     required this.id,
     required this.title,
     this.description,
+    this.reason,
     required this.price,
     required this.status,
     required this.canBid,
+    this.providerId,
     this.customerId,
+    this.customerName,
+    this.customerProfile,
     this.services = const [],
     this.createdAt,
     this.jobPrice,
@@ -72,10 +92,14 @@ class PostJob {
       id: json['id'] ?? 0,
       title: json['title']?.toString() ?? '',
       description: json['description']?.toString(),
+      reason: json['reason']?.toString(),
       price: (json['price'] ?? 0).toDouble(),
       status: json['status']?.toString() ?? 'requested',
       canBid: json['can_bid'] == true,
-      customerId: json['customer_id'],
+      providerId: json['provider_id'] != null ? int.tryParse(json['provider_id'].toString()) : null,
+      customerId: json['customer_id'] != null ? int.tryParse(json['customer_id'].toString()) : null,
+      customerName: json['customer_name']?.toString(),
+      customerProfile: json['customer_profile']?.toString(),
       services: svcs,
       createdAt: json['created_at']?.toString(),
       jobPrice: json['job_price'] != null ? (json['job_price']).toDouble() : null,
@@ -106,6 +130,9 @@ class BidItem {
   final double amount;
   final String? note;
   final String status;
+  final String? duration;
+  final String? providerName;
+  final String? providerImage;
 
   BidItem({
     required this.id,
@@ -114,16 +141,32 @@ class BidItem {
     required this.amount,
     this.note,
     required this.status,
+    this.duration,
+    this.providerName,
+    this.providerImage,
   });
 
   factory BidItem.fromJson(Map<String, dynamic> json) {
+    String? pName;
+    String? pImage;
+    if (json['provider'] is Map) {
+      final pMap = json['provider'];
+      pName = pMap['display_name']?.toString() ?? 
+              '${pMap['first_name'] ?? ''} ${pMap['last_name'] ?? ''}'.trim();
+      if (pName.isEmpty) pName = null;
+      pImage = pMap['profile_image']?.toString();
+    }
+
     return BidItem(
       id: json['id'] ?? 0,
-      postJobId: json['post_job_id'] ?? 0,
+      postJobId: json['post_request_id'] ?? json['post_job_id'] ?? 0,
       providerId: json['provider_id'] ?? 0,
-      amount: (json['amount'] ?? 0).toDouble(),
+      amount: (json['price'] ?? json['amount'] ?? 0).toDouble(),
       note: json['note']?.toString(),
-      status: json['status']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'requested',
+      duration: json['duration']?.toString(),
+      providerName: pName,
+      providerImage: pImage,
     );
   }
 }

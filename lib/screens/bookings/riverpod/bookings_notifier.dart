@@ -148,6 +148,27 @@ class BookingsNotifier extends Notifier<BookingsState> {
     }
   }
 
+  Future<void> assignSelf(int bookingId) async {
+    try {
+      final res = await _api.post(
+        endpoint: '/booking-assign-self',
+        body: {'id': bookingId},
+      );
+      if (res is Map && (res['status'] == 1 || res['status'] == true)) {
+        Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Self assigned successfully', backgroundColor: Colors.green, textColor: Colors.white);
+        await _fetchBookings();
+        if (state.currentBookingDetail?.bookingDetail?.id == bookingId) {
+          await fetchBookingDetail(bookingId);
+        }
+        ref.invalidate(dashboardProvider);
+      } else {
+        Fluttertoast.showToast(msg: (res is Map ? res['message']?.toString() : null) ?? 'Failed to self assign', backgroundColor: Colors.red, textColor: Colors.white);
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: e.toString(), backgroundColor: Colors.red, textColor: Colors.white);
+    }
+  }
+
   Future<void> confirmCompletion(int bookingId) async {
     try {
       final res = await _api.post(
@@ -336,12 +357,12 @@ class BookingsNotifier extends Notifier<BookingsState> {
     }
   }
 
-  Future<void> downloadInvoice(int bookingId) async {
+  Future<void> downloadInvoice(int bookingId, String email) async {
     state = state.copyWith(downloadingInvoiceId: bookingId);
     try {
       final res = await _api.post(
         endpoint: '/download-invoice',
-        body: {'booking_id': bookingId},
+        body: {'booking_id': bookingId, 'email': email},
       );
       
       if (res is Map && res['status'] == 1) {

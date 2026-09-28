@@ -90,6 +90,7 @@ class Booking {
   final String? userName;
   final String? address;
   final String? bookingDate;
+  final String? statusLabel;
   final double? totalAmount;
 
   final String? bookingPlaced;
@@ -126,6 +127,7 @@ class Booking {
     this.userName,
     this.address,
     this.bookingDate,
+    this.statusLabel,
     this.totalAmount,
     this.bookingPlaced,
     this.paymentMethod,
@@ -159,6 +161,7 @@ class Booking {
     String? userName,
     String? address,
     String? bookingDate,
+    String? statusLabel,
     double? totalAmount,
     String? bookingPlaced,
     String? paymentMethod,
@@ -191,6 +194,7 @@ class Booking {
       userName: userName ?? this.userName,
       address: address ?? this.address,
       bookingDate: bookingDate ?? this.bookingDate,
+      statusLabel: statusLabel ?? this.statusLabel,
       totalAmount: totalAmount ?? this.totalAmount,
       bookingPlaced: bookingPlaced ?? this.bookingPlaced,
       paymentMethod: paymentMethod ?? this.paymentMethod,
@@ -243,6 +247,7 @@ class Booking {
     return Booking(
       id: json['id'] ?? 0,
       bookingStatus: json['status'] ?? 'UNKNOWN',
+      statusLabel: json['status_label'],
       serviceImage: (json['service_attchments'] != null && (json['service_attchments'] as List).isNotEmpty) ? json['service_attchments'][0] : null,
       serviceName: json['service_name'],
       userName: json['customer_name'],

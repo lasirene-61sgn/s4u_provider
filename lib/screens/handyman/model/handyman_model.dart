@@ -83,10 +83,10 @@ class Handyman {
       state: json['state']?.toString() ?? '',
       city: json['city_name']?.toString() ?? json['city']?.toString() ?? '',
       address: json['address']?.toString() ?? '',
+      handymanCommission: json['handymantype_id']?.toString() ?? json['handyman_commission']?.toString() ?? json['handymanCommission']?.toString() ?? json['userCommission']?.toString(),
       email: parsedEmail,
       mobile: parsedMobile,
       selectAddress: json['selectAddress']?.toString(),
-      handymanCommission: json['handyman_commission']?.toString() ?? json['handymanCommission']?.toString() ?? json['userCommission']?.toString(),
       status: () {
         final s = json['status'];
         if (s == 1 || s == '1') return 'ACTIVE';

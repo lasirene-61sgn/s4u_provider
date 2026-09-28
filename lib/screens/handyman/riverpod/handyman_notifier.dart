@@ -28,6 +28,8 @@ class HandymanState {
   final int editingId;
   final HandymanDetail? selectedDetail;
   final bool isLoadingDetail;
+  final bool isSaving;
+  final String? savingError;
 
   HandymanState({
     this.isLoading = false,
@@ -51,6 +53,8 @@ class HandymanState {
     this.editingId = -1,
     this.selectedDetail,
     this.isLoadingDetail = false,
+    this.isSaving = false,
+    this.savingError,
   });
 
   HandymanState copyWith({
@@ -75,6 +79,8 @@ class HandymanState {
     int? editingId,
     HandymanDetail? selectedDetail,
     bool? isLoadingDetail,
+    bool? isSaving,
+    String? savingError,
   }) {
     return HandymanState(
       isLoading: isLoading ?? this.isLoading,
@@ -98,6 +104,8 @@ class HandymanState {
       editingId: editingId ?? this.editingId,
       selectedDetail: selectedDetail ?? this.selectedDetail,
       isLoadingDetail: isLoadingDetail ?? this.isLoadingDetail,
+      isSaving: isSaving ?? this.isSaving,
+      savingError: savingError ?? this.savingError,
     );
   }
 }
@@ -248,14 +256,17 @@ class HandymanNotifier extends Notifier<HandymanState> {
     try {
       final res = await _api.get(endpoint: '/user-detail?id=$id');
       print("resdetail$res");
-      if (res is Map && res['data'] != null) {
-        final detailResponse = HandymanDetailResponse.fromJson(res as Map<String, dynamic>);
-        state = state.copyWith(selectedDetail: detailResponse.data);
-        return true;
+      if (res is Map && (res['status'] == true || res['status'] == 1)) {
+        if (res['data'] != null) {
+          final detailResponse = HandymanDetailResponse.fromJson(res as Map<String, dynamic>);
+          state = state.copyWith(selectedDetail: detailResponse.data);
+          return true;
+        }
+        return false;
       } else {
-        final msg = res is Map ? res['message']?.toString() : 'Failed to load details';
+        final msg = (res is Map ? res['message']?.toString() : null) ?? 'Failed to load details';
         state = state.copyWith(error: msg);
-        Fluttertoast.showToast(msg: msg ?? 'Unknown error', backgroundColor: Colors.red, textColor: Colors.white);
+        Fluttertoast.showToast(msg: msg, backgroundColor: Colors.red, textColor: Colors.white);
         return false;
       }
     } catch (e) {
@@ -265,6 +276,10 @@ class HandymanNotifier extends Notifier<HandymanState> {
     } finally {
       state = state.copyWith(isLoadingDetail: false, editingId: -1);
     }
+  }
+
+  void clearSelectedDetail() {
+    state = state.copyWith(selectedDetail: null, editingId: -1);
   }
 
   Future<void> loadMoreUnassigned() async {
@@ -290,47 +305,65 @@ class HandymanNotifier extends Notifier<HandymanState> {
     }
   }
 
-  Future<void> addHandyman(String firstName, String lastName, String username, String email, String mobile, String password, int? countryId, int? stateId, int? cityId, String address, String selectAddress, String handymanCommission, {String? imageUrl}) async {
+  Future<void> addHandyman(BuildContext context, String firstName, String lastName, String username, String email, String mobile, String password, int? countryId, int? stateId, int? cityId, String address, int? serviceAddressId, String handymanCommission, {String? imageUrl}) async {
+    state = state.copyWith(isSaving: true, savingError: null);
     try {
+      final parsedInt = int.tryParse(handymanCommission);
+      final valueToSend = parsedInt ?? handymanCommission;
+      
       final res = await _api.post(
-        endpoint: '/provider/handymen',
+        endpoint: '/handyman-save',
         body: {
-          'firstName': firstName, 
-          'lastName': lastName, 
+          'first_name': firstName, 
+          'last_name': lastName, 
           'username': username, 
           'email': email,
-          'mobile': mobile,
+          'contact_number': mobile,
           'password': password,
+          'user_type': 'handyman',
           if (countryId != null) 'country_id': countryId,
           if (stateId != null) 'state_id': stateId,
           if (cityId != null) 'city_id': cityId,
           'address': address,
-          'selectAddress': selectAddress,
-          'handymanCommission': handymanCommission,
-          if (imageUrl != null) 'profileImage': imageUrl,
+          if (serviceAddressId != null) 'service_address_id': serviceAddressId,
+          'handyman_commission': valueToSend,
+          'handymantype_id': valueToSend,
+          'handymanCommission': valueToSend,
+          if (imageUrl != null) 'profile_image': imageUrl,
         },
       );
+      print("response: $res");
       if (res is Map && (res['status'] == true || res['status'] == 1)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Handyman added successfully', backgroundColor: Colors.green, textColor: Colors.white);
         final data = res['data'];
-        if (data != null) {
-          final newHandyman = Handyman.fromJson(data);
+        if (data != null && data is Map && data.containsKey('id')) {
+          final newHandyman = Handyman.fromJson(data as Map<String, dynamic>);
           state = state.copyWith(
             handymen: [...state.handymen, newHandyman],
+            isSaving: false,
           );
         } else {
+          state = state.copyWith(isSaving: false);
           await _fetchHandymen();
         }
+        if (context.mounted) Navigator.pop(context);
       } else {
-        Fluttertoast.showToast(msg: (res is Map ? res['message']?.toString() : null) ?? 'Failed to add handyman', backgroundColor: Colors.red, textColor: Colors.white);
+        final msg = (res is Map ? res['message']?.toString() : null) ?? 'Failed to add handyman';
+        state = state.copyWith(isSaving: false, savingError: msg);
+        Fluttertoast.showToast(msg: msg, backgroundColor: Colors.red, textColor: Colors.white);
       }
     } catch (e) {
+      state = state.copyWith(isSaving: false, savingError: e.toString());
       Fluttertoast.showToast(msg: e.toString(), backgroundColor: Colors.red, textColor: Colors.white);
     }
   }
 
-  Future<void> updateHandyman(int id, String firstName, String lastName, String username, String email, String mobile, int? countryId, int? stateId, int? cityId, String address, String selectAddress, String handymanCommission, {String? imageUrl}) async {
+  Future<void> updateHandyman(BuildContext context, int id, String firstName, String lastName, String username, String email, String mobile, int? countryId, int? stateId, int? cityId, String address, int? serviceAddressId, String handymanCommission, {String? imageUrl}) async {
+    state = state.copyWith(isSaving: true, savingError: null);
     try {
+      final parsedInt = int.tryParse(handymanCommission);
+      final valueToSend = parsedInt ?? handymanCommission;
+
       final res = await _api.post(
         endpoint: '/handyman-save',
         body: {
@@ -345,8 +378,10 @@ class HandymanNotifier extends Notifier<HandymanState> {
           if (stateId != null) 'state_id': stateId,
           if (cityId != null) 'city_id': cityId,
           'address': address,
-          'selectAddress': selectAddress,
-          'handymanCommission': handymanCommission,
+          if (serviceAddressId != null) 'service_address_id': serviceAddressId,
+          'handyman_commission': valueToSend,
+          'handymantype_id': valueToSend,
+          'handymanCommission': valueToSend,
           if (imageUrl != null) 'profile_image': imageUrl,
         },
       );
@@ -354,19 +389,25 @@ class HandymanNotifier extends Notifier<HandymanState> {
       if (res is Map && (res['status'] == true || res['status'] == 1)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Handyman updated successfully', backgroundColor: Colors.green, textColor: Colors.white);
         final data = res['data'];
-        if (data != null) {
-          final updatedHandyman = Handyman.fromJson(data);
+        if (data != null && data is Map && data.containsKey('id')) {
+          final updatedHandyman = Handyman.fromJson(data as Map<String, dynamic>);
           state = state.copyWith(
             handymen: state.handymen.map((h) => h.id == id ? updatedHandyman : h).toList(),
             pendingHandymen: state.pendingHandymen.map((h) => h.id == id ? updatedHandyman : h).toList(),
+            isSaving: false,
           );
         } else {
+          state = state.copyWith(isSaving: false);
           await _fetchHandymen();
         }
+        if (context.mounted) Navigator.pop(context);
       } else {
-        Fluttertoast.showToast(msg: (res is Map ? res['message']?.toString() : null) ?? 'Failed to update handyman', backgroundColor: Colors.red, textColor: Colors.white);
+        final msg = (res is Map ? res['message']?.toString() : null) ?? 'Failed to update handyman';
+        state = state.copyWith(isSaving: false, savingError: msg);
+        Fluttertoast.showToast(msg: msg, backgroundColor: Colors.red, textColor: Colors.white);
       }
     } catch (e) {
+      state = state.copyWith(isSaving: false, savingError: e.toString());
       Fluttertoast.showToast(msg: e.toString(), backgroundColor: Colors.red, textColor: Colors.white);
     }
   }
@@ -376,12 +417,12 @@ class HandymanNotifier extends Notifier<HandymanState> {
     try {
       final res = await _api.post(endpoint: '/handyman-delete/$id');
       print("delete:$res");
-      if (res is Map && (res['status'] == true || res['status'] == 1 || (res.containsKey('message') && res['message'].toString().toLowerCase().contains('successfully')))) {
+      if (res is Map && (res['status'] == true || res['status'] == 1)) {
         Fluttertoast.showToast(msg: res['message']?.toString() ?? 'Handyman deleted successfully', backgroundColor: Colors.green, textColor: Colors.white);
         await refresh();
       } else {
-        final msg = res is Map ? res['message']?.toString() : 'Failed to delete handyman';
-        Fluttertoast.showToast(msg: msg ?? 'Failed to delete handyman', backgroundColor: Colors.red, textColor: Colors.white);
+        final msg = (res is Map ? res['message']?.toString() : null) ?? 'Failed to delete handyman';
+        Fluttertoast.showToast(msg: msg, backgroundColor: Colors.red, textColor: Colors.white);
       }
     } catch (e) {
       Fluttertoast.showToast(msg: e.toString(), backgroundColor: Colors.red, textColor: Colors.white);

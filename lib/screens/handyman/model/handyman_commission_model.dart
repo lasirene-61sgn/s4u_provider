@@ -35,11 +35,11 @@ class HandymanCommissionModel {
 
   factory HandymanCommissionModel.fromJson(Map<String, dynamic> json) {
     return HandymanCommissionModel(
-      id: json['id'] ?? 0,
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
       name: json['name']?.toString() ?? '',
-      commission: (json['commission'] ?? 0).toDouble(),
+      commission: double.tryParse(json['commission']?.toString() ?? '0') ?? 0.0,
       type: json['type']?.toString() ?? 'percent',
-      status: json['status'] ?? 1,
+      status: json['status'] is int ? json['status'] : int.tryParse(json['status']?.toString() ?? '1') ?? 1,
       createdAt: json['created_at']?.toString(),
     );
   }

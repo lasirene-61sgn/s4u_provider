@@ -25,7 +25,8 @@ import '../../earnings/ui/payments_screen.dart';
 import '../../handyman/riverpod/handyman_earning_notifier.dart';
 
 class ProviderInfoScreen extends ConsumerStatefulWidget {
-  const ProviderInfoScreen({super.key});
+  final Function(int)? onNavigate;
+  const ProviderInfoScreen({super.key, this.onNavigate});
 
   @override
   ConsumerState<ProviderInfoScreen> createState() => _ProviderInfoScreenState();
@@ -77,6 +78,9 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
   final _oldPassCtrl = TextEditingController();
   final _newPassCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
+  bool _obscureOldPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
   bool _isUpdating = false;
 
   // Time Slot state
@@ -326,6 +330,11 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
                         value: totalBooking,
                         valueColor: AppColors.orange,
                         bgColor: const Color(0xFFFFFBF0),
+                        onTap: () {
+                          if (widget.onNavigate != null) {
+                            widget.onNavigate!(1);
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -406,6 +415,11 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
                                 value: totalBooking,
                                 valueColor: AppColors.orange,
                                 bgColor: const Color(0xFFFFFBF0),
+                                onTap: () {
+                                  if (widget.onNavigate != null) {
+                                    widget.onNavigate!(1);
+                                  }
+                                },
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -529,30 +543,34 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
     required String value,
     required Color valueColor,
     required Color bgColor,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      height: 100,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderLight),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: valueColor)),
-          ),
-          const Spacer(),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-          ),
-        ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 100,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderLight),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: valueColor)),
+            ),
+            const Spacer(),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1135,11 +1153,35 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
           width: 500,
           child: Column(
             children: [
-              _buildTextField('Old Password *', _oldPassCtrl, obscure: true),
+              _buildTextField(
+                'Old Password *', 
+                _oldPassCtrl, 
+                obscure: _obscureOldPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureOldPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: AppColors.textMuted),
+                  onPressed: () => setState(() => _obscureOldPassword = !_obscureOldPassword),
+                ),
+              ),
               const SizedBox(height: 24),
-              _buildTextField('New Password *', _newPassCtrl, obscure: true),
+              _buildTextField(
+                'New Password *', 
+                _newPassCtrl, 
+                obscure: _obscureNewPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureNewPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: AppColors.textMuted),
+                  onPressed: () => setState(() => _obscureNewPassword = !_obscureNewPassword),
+                ),
+              ),
               const SizedBox(height: 24),
-              _buildTextField('Confirm New Password *', _confirmPassCtrl, obscure: true),
+              _buildTextField(
+                'Confirm New Password *', 
+                _confirmPassCtrl, 
+                obscure: _obscureConfirmPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: AppColors.textMuted),
+                  onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                ),
+              ),
               const SizedBox(height: 32),
               Align(
                 alignment: Alignment.centerRight,
@@ -1162,10 +1204,38 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
                         }
                       );
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(response['message'] ?? 'Password changed successfully', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
-                        _oldPassCtrl.clear();
-                        _newPassCtrl.clear();
-                        _confirmPassCtrl.clear();
+                        bool isSuccess = false;
+                        String msg = 'Failed to change password';
+
+                        if (response != null && response['status'] == 1) {
+                          final data = response['data'];
+                          if (data is Map) {
+                            msg = data['message']?.toString() ?? 'Password changed successfully';
+                            if (data.containsKey('status')) {
+                              isSuccess = data['status'] == true || data['status'] == 1;
+                            } else {
+                              isSuccess = !msg.toLowerCase().contains('not match') && 
+                                          !msg.toLowerCase().contains('incorrect') && 
+                                          !msg.toLowerCase().contains('fail') && 
+                                          !msg.toLowerCase().contains('error') && 
+                                          !msg.toLowerCase().contains('invalid');
+                            }
+                          } else {
+                            isSuccess = true;
+                            msg = 'Password changed successfully';
+                          }
+                        } else {
+                          msg = response?['message']?.toString() ?? 'Failed to change password';
+                        }
+
+                        if (isSuccess) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg, style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+                          _oldPassCtrl.clear();
+                          _newPassCtrl.clear();
+                          _confirmPassCtrl.clear();
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg, style: const TextStyle(color: Colors.white)), backgroundColor: Colors.red));
+                        }
                       }
                     } catch (e) {
                       if (context.mounted) {
@@ -1190,7 +1260,7 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
 
   // ─────────────────────── FIELD HELPERS ───────────────────────
 
-  Widget _buildTextField(String label, TextEditingController controller, {bool obscure = false, bool readOnly = false, int maxLines = 1}) {
+  Widget _buildTextField(String label, TextEditingController controller, {bool obscure = false, bool readOnly = false, int maxLines = 1, Widget? suffixIcon}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1215,6 +1285,7 @@ class _ProviderInfoScreenState extends ConsumerState<ProviderInfoScreen> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             filled: readOnly,
             fillColor: readOnly ? AppColors.backgroundScaffold : null,
+            suffixIcon: suffixIcon,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.primary)),

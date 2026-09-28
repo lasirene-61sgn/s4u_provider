@@ -8,9 +8,11 @@ import '../../../core/storage/shared_preference_helper.dart';
 import '../../../core/widgets/image_viewer.dart';
 import '../riverpod/dashboard_notifier.dart';
 import '../model/dashboard_model.dart';
+import '../../bookings/ui/bookings_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
-  const DashboardScreen({super.key});
+  final Function(int)? onNavigate;
+  const DashboardScreen({super.key, this.onNavigate});
 
   @override
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
@@ -109,16 +111,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (isHandyman) {
       return [
         _buildPurpleMetricCard('Today Booking', data.todayBooking.toString(), Icons.today_outlined),
-        _buildPurpleMetricCard('Total Booking', data.totalBooking.toString(), Icons.assignment_outlined),
+        _buildPurpleMetricCard('Total Booking', data.totalBooking.toString(), Icons.assignment_outlined, onTap: () {
+          if (widget.onNavigate != null) {
+            widget.onNavigate!(1); // 1 is Bookings index in ProviderLayout
+          }
+        }),
         _buildPurpleMetricCard('Complete Booking', data.completedBooking.toString(), Icons.check_circle_outline),
         _buildPurpleMetricCard('Remaining Payout', '₹${data.remainingPayout.toStringAsFixed(2)}', Icons.monetization_on_outlined),
         _buildPurpleMetricCard('Total Revenue', '₹${data.totalRevenue.toStringAsFixed(2)}', Icons.account_balance_wallet_outlined),
       ];
     } else {
       return [
-        _buildPurpleMetricCard('Total Booking', data.totalBooking.toString(), Icons.assignment_outlined),
-        _buildPurpleMetricCard('Total Service', data.totalService.toString(), Icons.design_services_outlined),
-        _buildPurpleMetricCard('Active Handyman', data.totalActiveHandyman.toString(), Icons.engineering_outlined),
+        _buildPurpleMetricCard('Total Booking', data.totalBooking.toString(), Icons.assignment_outlined, onTap: () {
+          if (widget.onNavigate != null) {
+            widget.onNavigate!(1); // 1 is Bookings index in ProviderLayout
+          }
+        }),
+        _buildPurpleMetricCard('Total Service', data.totalService.toString(), Icons.design_services_outlined, onTap: () {
+          if (widget.onNavigate != null) {
+            widget.onNavigate!(2); // 2 is Service index in ProviderLayout
+          }
+        }),
+        _buildPurpleMetricCard('Active Handyman', data.totalActiveHandyman.toString(), Icons.engineering_outlined, onTap: () {
+          if (widget.onNavigate != null) {
+            widget.onNavigate!(6); // 6 is Handyman List index in ProviderLayout
+          }
+        }),
         _buildPurpleMetricCard('Cash In Hand', '₹${data.totalCashInHand.toStringAsFixed(2)}', Icons.payments_outlined),
         _buildPurpleMetricCard('Remaining Payout', '₹${data.remainingPayout.toStringAsFixed(2)}', Icons.monetization_on_outlined),
         _buildPurpleMetricCard('Total Revenue', '₹${data.totalRevenue.toStringAsFixed(2)}', Icons.account_balance_wallet_outlined),
@@ -275,7 +293,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('Top Handyman', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
-                            TextButton(onPressed: () {}, child: const Text('View All', style: TextStyle(color: AppColors.primary))),
+                            TextButton(onPressed: () {
+                              if (widget.onNavigate != null) widget.onNavigate!(6);
+                            }, child: const Text('View All', style: TextStyle(color: AppColors.primary))),
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -316,7 +336,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('Recent Bookings', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
-                            TextButton(onPressed: () {}, child: const Text('View All', style: TextStyle(color: AppColors.primary))),
+                            TextButton(onPressed: () {
+                              if (widget.onNavigate != null) widget.onNavigate!(1);
+                            }, child: const Text('View All', style: TextStyle(color: AppColors.primary))),
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -338,16 +360,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   ),
                                   title: Text('${b['service_name'] ?? 'Booking'} #${b['id'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                                   subtitle: Text(b['date'] ?? b['booking_date'] ?? 'N/A', style: const TextStyle(fontSize: 12)),
-                                  trailing: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                                      foregroundColor: AppColors.primary,
-                                      elevation: 0,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    ),
-                                    onPressed: () {},
-                                    child: const Text('Accept', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ),
+                                  onTap: () {
+                                    if (widget.onNavigate != null) widget.onNavigate!(1);
+                                  },
                                 );
                               },
                             ),
@@ -364,45 +379,48 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildPurpleMetricCard(String title, String value, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF635BFF), // Vibrant purple
-        borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF6B66D6), Color(0xFF5B52C3)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  Widget _buildPurpleMetricCard(String title, String value, IconData icon, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF635BFF), // Vibrant purple
+          borderRadius: BorderRadius.circular(16),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6B66D6), Color(0xFF5B52C3)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-                const SizedBox(height: 4),
-                Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 20),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

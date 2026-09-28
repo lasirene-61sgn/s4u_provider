@@ -9,6 +9,9 @@ import '../../provider_info/riverpod/address_notifier.dart';
 import '../../provider_info/model/address_model.dart';
 import '../model/handyman_model.dart';
 import '../../../core/api/api_client.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class HandymanFormScreen extends ConsumerStatefulWidget {
   final Handyman? handyman;
@@ -34,9 +37,10 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
   int? _selectedCountry;
   int? _selectedState;
   int? _selectedCity;
+  int? _serviceAddressId;
   String _selectedStatus = 'Active';
-  bool _isSaving = false;
   bool _isEditMode = false;
+  bool _isFetchingLocation = false;
 
   final List<String> _addressTypes = ['Home', 'Office', 'Other'];
   final List<String> _statuses = ['Active', 'Inactive'];
@@ -74,8 +78,8 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
         _selectedCountry = detail.countryId;
         _selectedState = detail.stateId;
         _selectedCity = detail.cityId;
-        if (detail.handymanCommission != null && detail.handymanCommission!.isNotEmpty) {
-           _selectedCommission = detail.handymanCommission;
+        if (detail.handymanCommission != null && detail.handymanCommission!.toString().isNotEmpty) {
+           _selectedCommission = detail.handymanCommission!.toString();
         }
         
         _selectedStatus = detail.status == 1 ? 'Active' : 'Inactive';
@@ -107,6 +111,9 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
     if (_selectedState != null) {
       Future.microtask(() => ref.read(locationProvider.notifier).fetchCities(_selectedState!));
     }
+    
+    // Fetch commissions for the dropdown
+    Future.microtask(() => ref.read(handymanCommissionProvider.notifier).refresh());
   }
 
   @override
@@ -123,10 +130,19 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isSaving = true);
     try {
+      int? addressId;
+      if (_selectedAddress != null) {
+        final match = ref.read(addressProvider).addresses.firstWhere(
+          (a) => a.address == _selectedAddress,
+          orElse: () => AddressModel(id: -1, providerId: 0, address: '', latitude: '', longitude: '', status: 0),
+        );
+        if (match.id != -1) addressId = match.id;
+      }
+
       if (_isEditMode && widget.handyman != null) {
         await ref.read(handymenProvider.notifier).updateHandyman(
+          context,
           widget.handyman!.id,
           _firstNameCtrl.text.trim(),
           _lastNameCtrl.text.trim(),
@@ -137,12 +153,13 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
           _selectedState,
           _selectedCity,
           _addressCtrl.text.trim(),
-          _selectedAddress ?? '',
+          addressId,
           _selectedCommission ?? '',
           imageUrl: null,
         );
       } else {
         await ref.read(handymenProvider.notifier).addHandyman(
+          context,
           _firstNameCtrl.text.trim(),
           _lastNameCtrl.text.trim(),
           _usernameCtrl.text.trim(),
@@ -153,12 +170,63 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
           _selectedState,
           _selectedCity,
           _addressCtrl.text.trim(),
-          _selectedAddress ?? '',
+          addressId,
           _selectedCommission ?? '',
           imageUrl: null,
         );
       }
-      if (mounted) Navigator.pop(context);
+      
+      // Clear the detail state on success
+      if (mounted) ref.read(handymenProvider.notifier).clearSelectedDetail();
+      
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _fetchCurrentLocationAddress() async {
+    setState(() {
+      _isFetchingLocation = true;
+    });
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Location services are disabled.');
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied, we cannot request permissions.');
+      }
+
+      Position position = await Geolocator.getCurrentPosition();
+      final url = 'https://maps.googleapis.com/maps/api/geocode/json?latlng=${position.latitude},${position.longitude}&key=AIzaSyAkfch0HMM9K4rdDiZbj_cHYSHS4lJKhdg';
+      
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          final address = data['results'][0]['formatted_address'];
+          setState(() {
+            _addressCtrl.text = address;
+          });
+        } else {
+          throw Exception('Could not fetch address');
+        }
+      } else {
+        throw Exception('Failed to load address');
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -166,7 +234,11 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() {
+          _isFetchingLocation = false;
+        });
+      }
     }
   }
 
@@ -189,8 +261,8 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
           _selectedCountry = detail.countryId;
           _selectedState = detail.stateId;
           _selectedCity = detail.cityId;
-          if (detail.handymanCommission != null && detail.handymanCommission!.isNotEmpty) {
-             _selectedCommission = detail.handymanCommission;
+          if (detail.handymanCommission != null && detail.handymanCommission!.toString().isNotEmpty) {
+             _selectedCommission = detail.handymanCommission!.toString();
           }
           _selectedStatus = detail.status == 1 ? 'Active' : 'Inactive';
         });
@@ -202,11 +274,7 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
           ref.read(locationProvider.notifier).fetchCities(detail.stateId!);
         }
         if (detail.serviceAddressId != null) {
-          final matchedAddr = ref.read(addressProvider).addresses.firstWhere(
-            (a) => a.id == detail.serviceAddressId,
-            orElse: () => AddressModel(id: -1, providerId: 0, address: '', latitude: '', longitude: '', status: 0),
-          );
-          if (matchedAddr.id != -1) setState(() => _selectedAddress = matchedAddr.address);
+          _serviceAddressId = detail.serviceAddressId;
         }
       }
     });
@@ -217,48 +285,37 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
         .toList();
     final List<String> addressList = providerAddresses.isNotEmpty ? providerAddresses : _addressTypes;
 
+    if (_selectedAddress == null && _serviceAddressId != null && addressState.addresses.isNotEmpty) {
+      final matchedAddr = addressState.addresses.firstWhere(
+        (a) => a.id == _serviceAddressId,
+        orElse: () => AddressModel(id: -1, providerId: 0, address: '', latitude: '', longitude: '', status: 0),
+      );
+      if (matchedAddr.id != -1) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _selectedAddress = matchedAddr.address);
+        });
+      }
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
+      appBar: AppBar(
+        title: Text(
+          _isEditMode ? 'Edit' : 'Add New',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryDark),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.primaryDark),
+      ),
       body: handymanState.isLoadingDetail 
         ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
         : Column(
         children: [
-          // Header
-          SafeArea(
-            bottom: false,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: AppColors.borderLight)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _isEditMode ? 'Edit' : 'Add New',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryDark),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.arrow_back, size: 16),
-                  label: const Text('Back'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    side: const BorderSide(color: AppColors.primary),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ),
-
           // Form body
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(32),
+              padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
                 child: Container(
@@ -267,7 +324,7 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppColors.borderLight),
                   ),
-                  padding: const EdgeInsets.all(28),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -282,23 +339,34 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
                       // Row 2: Email | Password | Commission
                       _row3(
                         _textField('Email *', _emailCtrl, required: true, keyboard: TextInputType.emailAddress),
-                        _textField(
-                          _isEditMode ? 'Password (leave blank)' : 'Password *',
-                          _passwordCtrl,
-                          required: !_isEditMode,
-                          obscure: true,
-                        ),
+                        _isEditMode 
+                            ? const SizedBox.shrink()
+                            : _textField(
+                                'Password *',
+                                _passwordCtrl,
+                                required: true,
+                                obscure: true,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) return 'Required';
+                                  if (v.length < 8) return 'Must be at least 8 characters';
+                                  if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Must contain uppercase letter';
+                                  if (!RegExp(r'[a-z]').hasMatch(v)) return 'Must contain lowercase letter';
+                                  if (!RegExp(r'[0-9]').hasMatch(v)) return 'Must contain number';
+                                  if (!RegExp(r'''[!@#\$%\^&\*\(\)_\+\-\=\[\]\{\};:\'",<>\.\?\/\\|`~]''').hasMatch(v)) return 'Must contain special character';
+                                  return null;
+                                },
+                              ),
                         _commissionDropdown(),
                       ),
                       const SizedBox(height: 20),
 
-                      // Row 3: Select Address | Contact Number | Status
+                      // Row 3: Contact Number | Status | Select Address
                       _row3(
-                        _dropdown('Select Address *', addressList, _selectedAddress,
-                            (v) => setState(() => _selectedAddress = v)),
                         _phoneField(),
                         _dropdown('Status *', _statuses, _selectedStatus,
                             (v) => setState(() => _selectedStatus = v ?? 'Active')),
+                        _dropdown('Select Address', addressList, _selectedAddress,
+                            (v) => setState(() => _selectedAddress = v)),
                       ),
                       const SizedBox(height: 20),
 
@@ -348,15 +416,47 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
                       TextFormField(
                         controller: _addressCtrl,
                         maxLines: 3,
-                        decoration: _deco('Address'),
+                        decoration: _deco('Address').copyWith(
+                          suffixIcon: IconButton(
+                            icon: _isFetchingLocation 
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.my_location, color: AppColors.primary),
+                            onPressed: _isFetchingLocation ? null : _fetchCurrentLocationAddress,
+                            tooltip: 'Fetch current location',
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 32),
+
+                      const SizedBox(height: 16),
+                      if (handymanState.savingError != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            border: Border.all(color: Colors.red.shade200),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  handymanState.savingError!,
+                                  style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
 
                       // Save button
                       Align(
                         alignment: Alignment.centerRight,
                         child: ElevatedButton(
-                          onPressed: _isSaving ? null : _save,
+                          onPressed: handymanState.isSaving ? null : _save,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
@@ -364,7 +464,7 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             elevation: 0,
                           ),
-                          child: _isSaving
+                          child: handymanState.isSaving
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,
@@ -402,7 +502,7 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
   }
 
   Widget _textField(String lbl, TextEditingController ctrl,
-      {bool required = false, bool obscure = false, String? hint, TextInputType keyboard = TextInputType.text}) {
+      {bool required = false, bool obscure = false, String? hint, TextInputType keyboard = TextInputType.text, String? Function(String?)? validator}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _label(lbl),
       const SizedBox(height: 8),
@@ -411,7 +511,7 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
         obscureText: obscure,
         keyboardType: keyboard,
         decoration: _deco(hint ?? lbl.replaceAll(' *', '')),
-        validator: required ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null : null,
+        validator: validator ?? (required ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null : null),
       ),
     ]);
   }
@@ -513,14 +613,14 @@ class _HandymanFormScreenState extends ConsumerState<HandymanFormScreen> {
                 child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
               )
             : DropdownButtonFormField<String>(
-                value: items.any((c) => c.name == _selectedCommission) ? _selectedCommission : null,
+                value: items.any((c) => c.id.toString() == _selectedCommission) ? _selectedCommission : null,
                 hint: const Text('Select Commission', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
                 items: items.map((c) {
                   final label = c.type == 'Percent'
                       ? '${c.name} (${c.commission}%)'
                       : '${c.name} (₹${c.commission.toStringAsFixed(2)})';
                   return DropdownMenuItem<String>(
-                    value: c.name,
+                    value: c.id.toString(),
                     child: Text(label, style: const TextStyle(fontSize: 14)),
                   );
                 }).toList(),

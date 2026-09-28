@@ -105,6 +105,9 @@ class ProfileNotifier extends Notifier<ProfileState> {
     String? city,
     String? stateStr, // renamed to avoid conflict with Notifier.state
     String? country,
+    int? countryId,
+    int? stateId,
+    int? cityId,
     String? selectAddress,
     String? handymanCommission,
     String? whyChooseMeTitle,
@@ -129,8 +132,19 @@ class ProfileNotifier extends Notifier<ProfileState> {
     if (city != null) body['city'] = city;
     if (stateStr != null) body['state'] = stateStr;
     if (country != null) body['country'] = country;
+    if (countryId != null) body['country_id'] = countryId;
+    if (stateId != null) body['state_id'] = stateId;
+    if (cityId != null) body['city_id'] = cityId;
     if (selectAddress != null) body['selectAddress'] = selectAddress;
-    if (handymanCommission != null) body['handymanCommission'] = handymanCommission;
+    if (handymanCommission != null) {
+      final parsedInt = int.tryParse(handymanCommission);
+      final valueToSend = parsedInt ?? handymanCommission;
+      body['handymanCommission'] = valueToSend;
+      body['handyman_commission'] = valueToSend;
+      body['userCommission'] = valueToSend;
+      body['user_commission'] = valueToSend;
+      body['handymantype_id'] = valueToSend; // Just in case it maps to handymantype_id
+    }
     if (whyChooseMeTitle != null) body['whyChooseMeTitle'] = whyChooseMeTitle;
     if (whyChooseMeDescription != null) body['whyChooseMeDescription'] = whyChooseMeDescription;
     if (whyChooseMeReasons != null) body['whyChooseMeReasons'] = whyChooseMeReasons;

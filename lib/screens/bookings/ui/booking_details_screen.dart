@@ -13,6 +13,8 @@ import '../../handyman/riverpod/handyman_notifier.dart';
 import '../../../core/storage/shared_preference_helper.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../../../core/widgets/image_viewer.dart';
+import '../../auth/riverpod/auth_notifier.dart';
+import 'booking_route_map.dart';
 
 class BookingDetailsScreen extends ConsumerStatefulWidget {
   final int bookingId;
@@ -110,6 +112,7 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                         child: Column(
                           children: [
                             _buildDetailsBox(bookingData, detail),
+                            _buildRouteMap(bookingData, detail),
                             const SizedBox(height: 20),
                             _buildUserProviderCards(bookingData, detail),
                           ],
@@ -126,6 +129,7 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                   Column(
                     children: [
                       _buildDetailsBox(bookingData, detail),
+                      _buildRouteMap(bookingData, detail),
                       const SizedBox(height: 16),
                       _buildUserProviderCards(bookingData, detail),
                       const SizedBox(height: 16),
@@ -204,13 +208,60 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                (b.bookingStatus ?? 'Unknown').toUpperCase().replaceAll('_', ' '),
+                b.statusLabel ?? (b.bookingStatus ?? 'Unknown').toUpperCase().replaceAll('_', ' '),
                 style: TextStyle(color: _statusColor(b.bookingStatus), fontWeight: FontWeight.bold, fontSize: 12),
               ),
             ),
           )
       ],
     );
+  }
+
+  String _formatDate(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'N/A';
+    DateTime? date;
+    try {
+      date = DateTime.parse(dateString);
+    } catch (e) {
+      final RegExp regex = RegExp(r'^([a-zA-Z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) ([AMPM]+)$', caseSensitive: false);
+      final match = regex.firstMatch(dateString);
+      if (match != null) {
+        final monthStr = match.group(1)!.toLowerCase();
+        final day = int.parse(match.group(2)!);
+        final year = int.parse(match.group(3)!);
+        int hour = int.parse(match.group(4)!);
+        final minute = int.parse(match.group(5)!);
+        final ampm = match.group(6)!.toUpperCase();
+
+        final months = {
+          'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+          'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+        };
+        final month = months[monthStr] ?? 1;
+        
+        if (ampm == 'PM' && hour < 12) hour += 12;
+        if (ampm == 'AM' && hour == 12) hour = 0;
+        
+        date = DateTime(year, month, day, hour, minute);
+      }
+    }
+    
+    if (date != null) {
+      String day = date.day.toString().padLeft(2, '0');
+      String month = date.month.toString().padLeft(2, '0');
+      String year = date.year.toString().padLeft(4, '0');
+      
+      int hr = date.hour;
+      String ampm = hr >= 12 ? 'PM' : 'AM';
+      if (hr > 12) hr -= 12;
+      if (hr == 0) hr = 12;
+      String hour = hr.toString().padLeft(2, '0');
+      
+      String minute = date.minute.toString().padLeft(2, '0');
+      return '$day:$month:$year $hour:$minute $ampm';
+    }
+    
+    return dateString;
   }
 
   // ─────────────────── BOOKING DETAILS BOX ───────────────────
@@ -231,19 +282,24 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
           const SizedBox(height: 28),
           Row(
             children: [
-              Expanded(child: _infoCol('Booking Placed', booking.bookingPlaced ?? 'N/A')),
-              Expanded(child: _infoCol('Booking Date', booking.bookingDate ?? 'N/A')),
-              Expanded(child: _infoCol('Booking Status', booking.bookingStatus, isStatus: true)),
+              Expanded(child: _infoCol('Call Time', _formatDate(booking.bookingPlaced))),
+              Expanded(child: _infoCol('Report Date', _formatDate(booking.bookingDate))),
             ],
           ),
           const SizedBox(height: 28),
           Row(
             children: [
+              Expanded(child: _infoCol('Booking Status', booking.statusLabel ?? booking.bookingStatus, isStatus: true, statusKey: booking.bookingStatus)),
               Expanded(
                   child: _infoCol('Total Amount',
                       '₹${booking.totalAmount?.toStringAsFixed(2) ?? '0.00'}',
                       isAmount: true)),
               Expanded(child: _infoCol('Payment Method', booking.paymentMethod ?? '-', isMethod: true)),
+            ],
+          ),
+          const SizedBox(height: 28),
+          Row(
+            children: [
               Expanded(
                   child: _infoCol('Payment Status', booking.paymentStatus ?? 'Pending',
                       isPaymentStatus: true)),
@@ -266,6 +322,48 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ─────────────────── ROUTE MAP ───────────────────
+  Widget _buildRouteMap(Booking booking, BookingDetailResponse? detail) {
+    final role = SharedPreferenceHelper.getString('role') ?? 'PROVIDER';
+    final isHandyman = role == 'HANDYMAN';
+
+    final customerAddress = detail?.customer?.address ?? booking.address;
+    final customerName = detail?.customer?.displayName ?? booking.userName;
+
+    String? sourceAddress;
+    String? sourceName;
+
+    if (isHandyman) {
+      final hmData = (detail?.handymanData.isNotEmpty ?? false) ? detail!.handymanData.first : null;
+      sourceAddress = hmData?.address ?? detail?.providerData?.address ?? booking.providerAddress;
+      sourceName = '${hmData?.displayName ?? 'My Name'} (Handyman)';
+    } else {
+      sourceAddress = detail?.providerData?.address ?? booking.providerAddress;
+      sourceName = '${detail?.providerData?.displayName ?? 'My Name'} (Provider)';
+    }
+
+    if (customerAddress == null || customerAddress.isEmpty || sourceAddress == null || sourceAddress.isEmpty) {
+      return const SizedBox.shrink(); // Hide map if addresses aren't available
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Route to Customer',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        BookingRouteMap(
+          sourceAddress: sourceAddress,
+          destinationAddress: customerAddress,
+          sourceLabel: sourceName,
+          destinationLabel: customerName ?? 'Customer',
+        ),
+      ],
     );
   }
 
@@ -398,31 +496,52 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                 const SizedBox(height: 14),
                 const Divider(color: Color(0xFFF1F5F9), height: 1),
                 const SizedBox(height: 14),
-                Row(
-                  children: [
-                    const Icon(Icons.call_outlined, size: 15, color: AppColors.textMuted),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(phone ?? email ?? 'N/A',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.location_on_outlined, size: 15, color: AppColors.textMuted),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(address ?? '-',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
-                ),
+                if (phone != null && phone.isNotEmpty)
+                  Row(
+                    children: [
+                      const Icon(Icons.call_outlined, size: 15, color: AppColors.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(phone,
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12
+                            ),
+                            overflow: TextOverflow.ellipsis
+                        ),
+                      ),
+                    ],
+                  ),
+                if (email != null && email.isNotEmpty) ...[
+                  if (phone != null && phone.isNotEmpty) const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.email_outlined, size: 15, color: AppColors.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(email,
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ),
+                ],
+                if (address != null && address.isNotEmpty && address != '-') ...[
+                  if ((phone != null && phone.isNotEmpty) || (email != null && email.isNotEmpty)) const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.location_on_outlined, size: 15, color: AppColors.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(address,
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
     );
@@ -618,7 +737,10 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                 onTap: () => notifier.updateBookingStatus(booking.id, 'completed', paymentStatus: 'paid')),
           if (booking.paymentStatus?.toLowerCase() == 'paid')
             btn('Download Invoice', bg: const Color(0xFF635BFF), icon: Icons.download,
-                onTap: () => notifier.downloadInvoice(booking.id)),
+                onTap: () {
+                  final providerEmail = detail?.providerData?.email ?? ref.read(authProvider).user?.email;
+                  _showDownloadInvoiceDialog(context, ref, booking.id, providerEmail);
+                }),
         ],
       );
     }
@@ -629,6 +751,62 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
   }
 
   // ─────────────────── ASSIGN HANDYMAN DIALOG ───────────────────
+  void _showDownloadInvoiceDialog(BuildContext context, WidgetRef ref, int bookingId, String? defaultEmail) {
+    final emailController = TextEditingController(text: defaultEmail ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Download Invoice', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary)),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Please enter the email address to receive the invoice.', style: TextStyle(fontSize: 14)),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: emailController,
+                decoration: InputDecoration(
+                  labelText: 'Email Address',
+                  prefixIcon: const Icon(Icons.email),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Email is required';
+                  }
+                  if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                    return 'Enter a valid email address';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.of(ctx).pop();
+                ref.read(bookingsProvider.notifier).downloadInvoice(bookingId, emailController.text.trim());
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+            child: const Text('Send Invoice'),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _showStatusHistoryDialog(BuildContext context, List<BookingActivity> activities) {
     showModalBottomSheet(
@@ -776,29 +954,58 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                 );
               }
               final men = hState.handymen;
-              if (men.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.engineering, size: 48, color: AppColors.textMuted),
-                        SizedBox(height: 12),
-                        Text('No handymen available', style: TextStyle(color: AppColors.textMuted)),
-                      ],
-                    ),
-                  ),
-                );
-              }
               return ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 360),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: men.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  itemBuilder: (cc, ii) {
+                constraints: const BoxConstraints(maxHeight: 400),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      leading: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.green.withValues(alpha: 0.1),
+                        child: const Icon(Icons.person, color: Colors.green),
+                      ),
+                      title: const Text('Self Assign', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: const Text('Assign this booking to yourself', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                      trailing: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(ctx);
+                          await r.read(bookingsProvider.notifier).assignSelf(bookingId);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('Assign to Me', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    if (men.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.engineering, size: 48, color: AppColors.textMuted),
+                              SizedBox(height: 12),
+                              Text('No handymen available', style: TextStyle(color: AppColors.textMuted)),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: men.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                          itemBuilder: (cc, ii) {
                     final h = men[ii];
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
@@ -832,9 +1039,12 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
                     );
                   },
                 ),
-              );
-            },
+              ),
+            ],
           ),
+        );
+      },
+    ),
         ),
       ),
     );
@@ -1044,9 +1254,9 @@ class _BookingDetailsScreenState extends ConsumerState<BookingDetailsScreen> {
 
   // ─────────────────── HELPERS ───────────────────
   Widget _infoCol(String label, String value,
-      {bool isStatus = false, bool isAmount = false, bool isMethod = false, bool isPaymentStatus = false}) {
+      {bool isStatus = false, bool isAmount = false, bool isMethod = false, bool isPaymentStatus = false, String? statusKey}) {
     Color valueColor = AppColors.textSecondary;
-    if (isStatus) valueColor = _statusColor(value);
+    if (isStatus) valueColor = _statusColor(statusKey ?? value);
     if (isAmount || isMethod) valueColor = AppColors.primary;
     if (isPaymentStatus) valueColor = Colors.green;
 

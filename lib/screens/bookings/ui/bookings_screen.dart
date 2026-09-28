@@ -75,7 +75,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                       children: [
                         SizedBox(width: 60, child: Text('ID', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
                         Expanded(flex: 2, child: Text('Service', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
-                        Expanded(child: Text('Booking Date', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                        Expanded(child: Text('Report Date', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
                         Expanded(flex: 2, child: Text('User', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
                         Expanded(child: Text('Status', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
                         Expanded(child: Text('Total Amount', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
@@ -168,9 +168,56 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     );
   }
 
+  String _formatDate(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'N/A';
+    DateTime? date;
+    try {
+      date = DateTime.parse(dateString);
+    } catch (e) {
+      final RegExp regex = RegExp(r'^([a-zA-Z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) ([AMPM]+)$', caseSensitive: false);
+      final match = regex.firstMatch(dateString);
+      if (match != null) {
+        final monthStr = match.group(1)!.toLowerCase();
+        final day = int.parse(match.group(2)!);
+        final year = int.parse(match.group(3)!);
+        int hour = int.parse(match.group(4)!);
+        final minute = int.parse(match.group(5)!);
+        final ampm = match.group(6)!.toUpperCase();
+
+        final months = {
+          'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+          'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+        };
+        final month = months[monthStr] ?? 1;
+        
+        if (ampm == 'PM' && hour < 12) hour += 12;
+        if (ampm == 'AM' && hour == 12) hour = 0;
+        
+        date = DateTime(year, month, day, hour, minute);
+      }
+    }
+    
+    if (date != null) {
+      String day = date.day.toString().padLeft(2, '0');
+      String month = date.month.toString().padLeft(2, '0');
+      String year = date.year.toString().padLeft(4, '0');
+      
+      int hr = date.hour;
+      String ampm = hr >= 12 ? 'PM' : 'AM';
+      if (hr > 12) hr -= 12;
+      if (hr == 0) hr = 12;
+      String hour = hr.toString().padLeft(2, '0');
+      
+      String minute = date.minute.toString().padLeft(2, '0');
+      return '$day:$month:$year $hour:$minute $ampm';
+    }
+    
+    return dateString;
+  }
+
   Widget _buildBookingRow(Booking booking) {
     Color statusColor;
-    String statusText = booking.bookingStatus.replaceAll('_', ' ');
+    String statusText = booking.statusLabel ?? booking.bookingStatus.replaceAll('_', ' ');
     
     switch (booking.bookingStatus) {
       case 'COMPLETED':
@@ -205,7 +252,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
             ),
             Expanded(
               child: Text(
-                booking.bookingDate ?? 'N/A',
+                _formatDate(booking.bookingDate),
                 style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
               ),
             ),
@@ -275,7 +322,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
 
   Widget _buildBookingCard(Booking booking) {
     Color statusColor;
-    String statusText = booking.bookingStatus.replaceAll('_', ' ');
+    String statusText = booking.statusLabel ?? booking.bookingStatus.replaceAll('_', ' ');
     
     switch (booking.bookingStatus) {
       case 'COMPLETED':
@@ -330,7 +377,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
             const SizedBox(height: 12),
             Text('${booking.serviceName ?? 'N/A'}', style: const TextStyle(color: Color(0xFF635BFF), fontSize: 15, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(booking.bookingDate ?? 'N/A', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
+            Text(_formatDate(booking.bookingDate), style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
             const SizedBox(height: 16),
             const Divider(height: 1, color: AppColors.borderLight),
             const SizedBox(height: 16),

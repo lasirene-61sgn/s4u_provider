@@ -7,6 +7,7 @@ import '../../../core/widgets/image_viewer.dart';
 import '../riverpod/handyman_notifier.dart';
 import '../model/handyman_model.dart';
 import 'handyman_form_screen.dart';
+import 'handyman_detail_screen.dart';
 
 const _purple = AppColors.primary; 
 const _dark = AppColors.primaryDark;
@@ -59,7 +60,30 @@ class _HandymanScreenState extends ConsumerState<HandymanScreen> {
               ),
               child: Column(
                 children: [
-
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const HandymanFormScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add Handyman'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF635BFF),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   Builder(builder: (context) {
                     final showJoiningDate = state.handymen.any((h) => h.approvedDate != null && h.approvedDate!.isNotEmpty);
                     final showAddress = state.handymen.any((h) => h.address.isNotEmpty);
@@ -336,6 +360,14 @@ class _HandymanTableRow extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => HandymanDetailScreen(handymanId: handyman.id)));
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.bgLighterPurple, foregroundColor: AppColors.primary, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                  icon: const Icon(Icons.visibility_outlined, size: 16), label: const Text('View'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
                   onPressed: onEdit,
                   style: ElevatedButton.styleFrom(backgroundColor: AppColors.bgLighterPurple, foregroundColor: AppColors.primary, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                   icon: const Icon(Icons.edit_outlined, size: 16), label: const Text('Edit'),
@@ -421,9 +453,27 @@ class _HandymanTableRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 90,
+            width: 130,
             child: Row(
               children: [
+                Tooltip(
+                  message: 'View',
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => HandymanDetailScreen(handymanId: handyman.id)));
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: _purpleLight,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.visibility_outlined, size: 16, color: _purple),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Tooltip(
                   message: 'Edit',
                   child: InkWell(

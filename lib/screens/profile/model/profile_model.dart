@@ -15,12 +15,16 @@ class Profile {
   final String? city;
   final String? state;
   final String? country;
+  final int? countryId;
+  final int? stateId;
+  final int? cityId;
   final String? selectAddress;
   final String? handymanCommission;
   final String? providerStatus;
   final String? whyChooseMeTitle;
   final String? whyChooseMeDescription;
   final List<String>? whyChooseMeReasons;
+  final int? providerId;
 
   Profile({
     required this.id,
@@ -37,19 +41,24 @@ class Profile {
     this.city,
     this.state,
     this.country,
+    this.countryId,
+    this.stateId,
+    this.cityId,
     this.selectAddress,
     this.handymanCommission,
     this.providerStatus,
     this.whyChooseMeTitle,
     this.whyChooseMeDescription,
     this.whyChooseMeReasons,
+    this.providerId,
   });
 
   Profile copyWith({
     int? id, String? username, String? firstName, String? lastName, String? email, String? mobile, String? role, String? profileImage,
     String? companyName, String? gstNumber, String? address, String? city, String? state,
-    String? country, String? selectAddress, String? handymanCommission, String? providerStatus,
+    String? country, int? countryId, int? stateId, int? cityId, String? selectAddress, String? handymanCommission, String? providerStatus,
     String? whyChooseMeTitle, String? whyChooseMeDescription, List<String>? whyChooseMeReasons,
+    int? providerId,
   }) {
     return Profile(
       id: id ?? this.id,
@@ -66,12 +75,16 @@ class Profile {
       city: city ?? this.city,
       state: state ?? this.state,
       country: country ?? this.country,
+      countryId: countryId ?? this.countryId,
+      stateId: stateId ?? this.stateId,
+      cityId: cityId ?? this.cityId,
       selectAddress: selectAddress ?? this.selectAddress,
       handymanCommission: handymanCommission ?? this.handymanCommission,
       providerStatus: providerStatus ?? this.providerStatus,
       whyChooseMeTitle: whyChooseMeTitle ?? this.whyChooseMeTitle,
       whyChooseMeDescription: whyChooseMeDescription ?? this.whyChooseMeDescription,
       whyChooseMeReasons: whyChooseMeReasons ?? this.whyChooseMeReasons,
+      providerId: providerId ?? this.providerId,
     );
   }
 
@@ -98,6 +111,9 @@ class Profile {
       city: json['city'] ?? json['city_name'],
       state: json['state'],
       country: json['country'],
+      countryId: json['country_id'],
+      stateId: json['state_id'],
+      cityId: json['city_id'],
       selectAddress: json['selectAddress'],
       handymanCommission: json['handymanCommission']?.toString() ?? json['handyman_commission']?.toString(),
       providerStatus: json['providerStatus'],
@@ -106,6 +122,7 @@ class Profile {
       whyChooseMeReasons: json['whyChooseMeReasons'] != null 
           ? List<String>.from(json['whyChooseMeReasons']) 
           : null,
+      providerId: json['provider_id'] is int ? json['provider_id'] : int.tryParse(json['provider_id']?.toString() ?? ''),
     );
   }
 }

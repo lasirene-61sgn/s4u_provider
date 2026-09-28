@@ -13,6 +13,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../provider_info/riverpod/address_notifier.dart';
 import '../../provider_info/model/address_model.dart';
 import '../../profile/riverpod/profile_notifier.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class ServiceFormScreen extends ConsumerStatefulWidget {
   final ServiceModel? service;
@@ -44,6 +46,11 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
   bool _advancedPayment = false;
   bool _isSaving = false;
   bool get _isEdit => widget.service != null;
+
+  final TextEditingController _newAddressCtrl = TextEditingController();
+  bool _isFetchingLocation = false;
+  String? _newAddressLat;
+  String? _newAddressLng;
 
   final List<String> _priceTypes = ['Fixed', 'Hourly'];
   final List<String> _statuses = ['Active', 'Inactive'];
@@ -182,7 +189,62 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
   void dispose() {
     _nameCtrl.dispose(); _descCtrl.dispose(); _priceCtrl.dispose();
     _discountCtrl.dispose(); _durationCtrl.dispose(); _advPaymentCtrl.dispose();
+    _newAddressCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchLocation() async {
+    setState(() => _isFetchingLocation = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) throw Exception('Location services disabled.');
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) throw Exception('Permission denied.');
+      }
+      if (permission == LocationPermission.deniedForever) throw Exception('Permission denied forever.');
+
+      final position = await Geolocator.getCurrentPosition();
+      List<Placemark> placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
+      
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        String address = '${place.street ?? ''}, ${place.subLocality ?? ''}, ${place.locality ?? ''}, ${place.postalCode ?? ''}, ${place.country ?? ''}'.replaceAll(RegExp(r',\s*,'), ',').replaceAll(RegExp(r'^,\s*'), '').replaceAll(RegExp(r',\s*$'), '');
+        _newAddressLat = position.latitude.toString();
+        _newAddressLng = position.longitude.toString();
+        setState(() => _newAddressCtrl.text = address);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not fetch location: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isFetchingLocation = false);
+    }
+  }
+
+  Future<void> _saveNewAddress() async {
+    final text = _newAddressCtrl.text.trim();
+    if (text.isEmpty) return;
+    
+    final req = {
+      'address': text,
+      'status': 1,
+      'latitude': _newAddressLat ?? '0.0',
+      'longitude': _newAddressLng ?? '0.0',
+    };
+    
+    setState(() => _isSaving = true);
+    await ref.read(addressProvider.notifier).addAddress(req);
+    setState(() => _isSaving = false);
+    
+    if (ref.read(addressProvider).error == null) {
+      setState(() {
+         _selectedAddress = text;
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -202,8 +264,8 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
           duration: _durationCtrl.text.trim(),
           status: _selectedStatus == 'Active' ? 'ACTIVE' : 'INACTIVE',
           visitType: _selectedVisitType,
-          selectAddress: _selectedAddress,
-          providerAddressId: _selectedAddress != null ? ref.read(addressProvider).addresses.firstWhere((a) => a.address == _selectedAddress, orElse: () => AddressModel(id: 0, providerId: 0, address: '', latitude: '', longitude: '', status: 1)).id.toString() : null,
+          selectAddress: _selectedAddress == 'Add Address' ? _newAddressCtrl.text.trim() : _selectedAddress,
+          providerAddressId: (_selectedAddress != null && _selectedAddress != 'Add Address') ? ref.read(addressProvider).addresses.firstWhere((a) => a.address == _selectedAddress, orElse: () => AddressModel(id: 0, providerId: 0, address: '', latitude: '', longitude: '', status: 1)).id.toString() : null,
           isFeatured: _isFeatured,
           timeslot: _timeslot,
           advancedPayment: _advancedPayment,
@@ -222,8 +284,8 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
           discount: double.tryParse(_discountCtrl.text),
           status: _selectedStatus == 'Active' ? 'ACTIVE' : 'INACTIVE',
           visitType: _selectedVisitType,
-          selectAddress: _selectedAddress,
-          providerAddressId: _selectedAddress != null ? ref.read(addressProvider).addresses.firstWhere((a) => a.address == _selectedAddress, orElse: () => AddressModel(id: 0, providerId: 0, address: '', latitude: '', longitude: '', status: 1)).id.toString() : null,
+          selectAddress: _selectedAddress == 'Add Address' ? _newAddressCtrl.text.trim() : _selectedAddress,
+          providerAddressId: (_selectedAddress != null && _selectedAddress != 'Add Address') ? ref.read(addressProvider).addresses.firstWhere((a) => a.address == _selectedAddress, orElse: () => AddressModel(id: 0, providerId: 0, address: '', latitude: '', longitude: '', status: 1)).id.toString() : null,
           isFeatured: _isFeatured,
           timeslot: _timeslot,
           advancedPayment: _advancedPayment,
@@ -361,7 +423,68 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
 
                       // Select Address | Price Type | Price
                       _row3(
-                        _buildDropdown('Select Address', ref.watch(addressProvider).addresses.map((a) => a.address).where((a) => a.isNotEmpty).toSet().toList()..addAll(_selectedAddress != null && !ref.watch(addressProvider).addresses.any((a) => a.address == _selectedAddress) ? [_selectedAddress!] : []), _selectedAddress, (v) => setState(() => _selectedAddress = v)),
+                        _selectedAddress == 'Add Address' 
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _label('Enter Address *'),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _newAddressCtrl,
+                                maxLines: 3,
+                                minLines: 3,
+                                decoration: _deco('Enter new address').copyWith(
+                                  prefixIcon: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      _isFetchingLocation 
+                                        ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))) 
+                                        : IconButton(icon: const Icon(Icons.my_location, color: AppColors.primary), onPressed: _fetchLocation),
+                                    ],
+                                  ),
+                                ),
+                                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                              ),
+                              const SizedBox(height: 8),
+                              ValueListenableBuilder<TextEditingValue>(
+                                valueListenable: _newAddressCtrl,
+                                builder: (context, value, child) {
+                                  return Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      TextButton(
+                                        onPressed: () => setState(() => _selectedAddress = null),
+                                        child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+                                      ),
+                                      if (value.text.trim().isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        ElevatedButton(
+                                          onPressed: _saveNewAddress,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primary,
+                                            foregroundColor: Colors.white,
+                                            elevation: 0,
+                                          ),
+                                          child: const Text('Add'),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
+                              ),
+                            ],
+                          )
+                        : _buildDropdown('Select Address', ['Add Address', ...ref.watch(addressProvider).addresses.map((a) => a.address).where((a) => a.isNotEmpty).toSet().toList()..addAll(_selectedAddress != null && _selectedAddress != 'Add Address' && !ref.watch(addressProvider).addresses.any((a) => a.address == _selectedAddress) ? [_selectedAddress!] : [])], _selectedAddress, (v) {
+                          setState(() {
+                            _selectedAddress = v;
+                            if (v == 'Add Address') {
+                              _newAddressCtrl.clear();
+                              _newAddressLat = null;
+                              _newAddressLng = null;
+                            }
+                          });
+                        }),
                         _buildDropdown('Price type *', _priceTypes, _selectedPriceType, (v) => setState(() => _selectedPriceType = v ?? 'Fixed')),
                         _textField('Price *', _priceCtrl, keyboard: TextInputType.number, required: true),
                       ),

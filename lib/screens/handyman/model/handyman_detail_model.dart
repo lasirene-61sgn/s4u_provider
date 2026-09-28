@@ -36,6 +36,15 @@ class HandymanDetail {
   final String? whyChooseMeTitle;
   final String? whyChooseMeDescription;
   final List<String>? whyChooseMeReasons;
+  final String? designation;
+  final dynamic knownLanguages;
+  final dynamic skills;
+  final num? handymanRating;
+  final num? providersServiceRating;
+  final int? totalServicesBooked;
+  final int? isVerifyProvider;
+  final int? isFavourite;
+  final String? createdAt;
 
   HandymanDetail({
     required this.id,
@@ -57,6 +66,15 @@ class HandymanDetail {
     this.whyChooseMeTitle,
     this.whyChooseMeDescription,
     this.whyChooseMeReasons,
+    this.designation,
+    this.knownLanguages,
+    this.skills,
+    this.handymanRating,
+    this.providersServiceRating,
+    this.totalServicesBooked,
+    this.isVerifyProvider,
+    this.isFavourite,
+    this.createdAt,
   });
 
   factory HandymanDetail.fromJson(Map<String, dynamic> json) {
@@ -87,25 +105,34 @@ class HandymanDetail {
     }
 
     return HandymanDetail(
-      id: json['id'] ?? 0,
-      firstName: json['first_name'] ?? '',
-      lastName: json['last_name'] ?? '',
-      username: json['username'] ?? '',
-      email: json['email'] ?? '',
-      contactNumber: json['contact_number'] ?? '',
-      address: json['address'],
-      countryId: json['country_id'],
-      stateId: json['state_id'],
-      cityId: json['city_id'],
-      cityName: json['city_name'],
-      serviceAddressId: json['service_address_id'],
-      handymanCommission: json['handyman_commission'],
-      status: json['status'] ?? 0,
-      profileImage: json['profile_image'],
-      isHandymanAvailable: json['isHandymanAvailable'],
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      firstName: json['first_name']?.toString() ?? '',
+      lastName: json['last_name']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
+      contactNumber: json['contact_number']?.toString() ?? '',
+      address: json['address']?.toString(),
+      countryId: json['country_id'] is int ? json['country_id'] : int.tryParse(json['country_id']?.toString() ?? ''),
+      stateId: json['state_id'] is int ? json['state_id'] : int.tryParse(json['state_id']?.toString() ?? ''),
+      cityId: json['city_id'] is int ? json['city_id'] : int.tryParse(json['city_id']?.toString() ?? ''),
+      cityName: json['city_name']?.toString(),
+      serviceAddressId: json['service_address_id'] is int ? json['service_address_id'] : int.tryParse(json['service_address_id']?.toString() ?? ''),
+      handymanCommission: json['handymantype_id']?.toString() ?? json['handyman_commission']?.toString(),
+      status: json['status'] is int ? json['status'] : int.tryParse(json['status']?.toString() ?? '0') ?? 0,
+      profileImage: json['profile_image']?.toString(),
+      isHandymanAvailable: json['isHandymanAvailable'] is int ? json['isHandymanAvailable'] : int.tryParse(json['isHandymanAvailable']?.toString() ?? ''),
       whyChooseMeTitle: wTitle,
       whyChooseMeDescription: wDesc,
       whyChooseMeReasons: wReasons,
+      designation: json['designation'],
+      knownLanguages: json['known_languages'],
+      skills: json['skills'],
+      handymanRating: json['handyman_rating'],
+      providersServiceRating: json['providers_service_rating'],
+      totalServicesBooked: json['total_services_booked'],
+      isVerifyProvider: json['is_verify_provider'],
+      isFavourite: json['is_favourite'],
+      createdAt: json['created_at'],
     );
   }
 
@@ -129,6 +156,15 @@ class HandymanDetail {
     String? whyChooseMeTitle,
     String? whyChooseMeDescription,
     List<String>? whyChooseMeReasons,
+    String? designation,
+    dynamic knownLanguages,
+    dynamic skills,
+    num? handymanRating,
+    num? providersServiceRating,
+    int? totalServicesBooked,
+    int? isVerifyProvider,
+    int? isFavourite,
+    String? createdAt,
   }) {
     return HandymanDetail(
       id: id ?? this.id,
@@ -150,6 +186,15 @@ class HandymanDetail {
       whyChooseMeTitle: whyChooseMeTitle ?? this.whyChooseMeTitle,
       whyChooseMeDescription: whyChooseMeDescription ?? this.whyChooseMeDescription,
       whyChooseMeReasons: whyChooseMeReasons ?? this.whyChooseMeReasons,
+      designation: designation ?? this.designation,
+      knownLanguages: knownLanguages ?? this.knownLanguages,
+      skills: skills ?? this.skills,
+      handymanRating: handymanRating ?? this.handymanRating,
+      providersServiceRating: providersServiceRating ?? this.providersServiceRating,
+      totalServicesBooked: totalServicesBooked ?? this.totalServicesBooked,
+      isVerifyProvider: isVerifyProvider ?? this.isVerifyProvider,
+      isFavourite: isFavourite ?? this.isFavourite,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

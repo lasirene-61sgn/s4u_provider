@@ -4,11 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/riverpod/auth_notifier.dart';
 import '../riverpod/profile_notifier.dart';
 import '../riverpod/time_slot_notifier.dart';
+import '../../handyman/riverpod/location_notifier.dart';
+import '../../handyman/riverpod/handyman_commission_notifier.dart';
 import 'dart:io';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/image_viewer.dart';
 import '../../../core/storage/shared_preference_helper.dart';
-
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -36,14 +40,137 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   late TextEditingController _countryCtrl;
   late TextEditingController _selectAddressCtrl;
   late TextEditingController _commissionCtrl;
+  int? _selectedCountry;
+  int? _selectedState;
+  int? _selectedCity;
   bool _controllersInitialized = false;
 
   // Change password controllers
   final _oldPassCtrl = TextEditingController();
   final _newPassCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
+  bool _obscureOldPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
 
   bool _isUpdating = false;
+  bool _isDeletingAccount = false;
+  bool _isFetchingLocation = false;
+
+  Future<void> _deleteAccount() async {
+    setState(() {
+      _isDeletingAccount = true;
+    });
+    try {
+      final response = await ApiClient().post(endpoint: '/delete-user-account');
+      if (response != null && response['status'] == 1) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Account deleted successfully', style: TextStyle(color: Colors.white)), backgroundColor: Colors.green),
+          );
+          await ref.read(authProvider.notifier).logout();
+          if (mounted) {
+            Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response?['message']?.toString() ?? 'Failed to delete account', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString(), style: const TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeletingAccount = false;
+        });
+      }
+    }
+  }
+
+  void _showDeleteAccountConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Account'),
+        content: const Text('Are you sure you want to delete your account? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _deleteAccount();
+            },
+            child: const Text('Yes', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _fetchCurrentLocationAddress() async {
+    setState(() {
+      _isFetchingLocation = true;
+    });
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Location services are disabled.');
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied, we cannot request permissions.');
+      }
+
+      Position position = await Geolocator.getCurrentPosition();
+      final url = 'https://maps.googleapis.com/maps/api/geocode/json?latlng=${position.latitude},${position.longitude}&key=AIzaSyAkfch0HMM9K4rdDiZbj_cHYSHS4lJKhdg';
+      
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          final address = data['results'][0]['formatted_address'];
+          setState(() {
+            _addressCtrl.text = address;
+          });
+        } else {
+          throw Exception('Could not fetch address');
+        }
+      } else {
+        throw Exception('Failed to load address');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingLocation = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -104,6 +231,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _countryCtrl.text = profile.country ?? '';
       _selectAddressCtrl.text = profile.selectAddress ?? '';
       _commissionCtrl.text = profile.handymanCommission ?? '';
+      _selectedCountry = profile.countryId;
+      _selectedState = profile.stateId;
+      _selectedCity = profile.cityId;
+      if (_selectedCountry != null) {
+        Future.microtask(() => ref.read(locationProvider.notifier).fetchStates(_selectedCountry!));
+      }
+      if (_selectedState != null) {
+        Future.microtask(() => ref.read(locationProvider.notifier).fetchCities(_selectedState!));
+      }
+      if (profile.providerId != null) {
+        Future.microtask(() => ref.read(handymanCommissionProvider.notifier).fetchByProviderId(profile.providerId!));
+      }
       _controllersInitialized = true;
     }
   }
@@ -111,6 +250,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(profileProvider);
+    final locationState = ref.watch(locationProvider);
     final profile = state.profile;
     const bool isMobile = true;
 
@@ -159,7 +299,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
       child: state.isLoading && profile == null
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : _buildTabContent(profile, state),
+          : _buildTabContent(profile, state, locationState),
     );
 
     return Column(
@@ -216,9 +356,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildTabContent(profile, ProfileState state) {
+  Widget _buildTabContent(profile, ProfileState state, LocationState locationState) {
     switch (_selectedTab) {
-      case 0: return _buildProfileTab(profile);
+      case 0: return _buildProfileTab(profile, locationState);
       case 1: return _buildChangePasswordTab();
       case 2: return _buildTimeSlotTab();
       default: return const SizedBox();
@@ -227,7 +367,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // ─────────────────────── PROFILE TAB ───────────────────────
 
-  Widget _buildProfileTab(dynamic profile) {
+  Widget _buildProfileTab(dynamic profile, LocationState locationState) {
     final imageUrl = profile?.profileImage != null
         ? (profile!.profileImage!.startsWith('http')
             ? profile.profileImage!
@@ -267,22 +407,77 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (_role == 'PROVIDER') ...[
             row2(_buildTextField('Company Name', _companyNameCtrl), _buildTextField('GST Number', _gstCtrl)),
             const SizedBox(height: 20),
-          ] else if (_role == 'HANDYMAN') ...[
-            row2(_buildTextField('Country', _countryCtrl), _buildTextField('Select Address', _selectAddressCtrl)),
+            row2(_buildTextField('City', _cityCtrl), _buildTextField('State', _stateCtrl)),
             const SizedBox(height: 20),
-            _buildTextField('Handyman Commission', _commissionCtrl),
+          ] else if (_role == 'HANDYMAN') ...[
+            row2(
+              _dropdownLocation(
+                'Country', 
+                locationState.countries.map((c) => MapEntry<int, String>(c.id, c.name)).toList(),
+                _selectedCountry, 
+                (v) {
+                  setState(() {
+                    _selectedCountry = v;
+                    _selectedState = null;
+                    _selectedCity = null;
+                  });
+                  if (v != null) ref.read(locationProvider.notifier).fetchStates(v);
+                }
+              ),
+              _selectedCountry != null ? _dropdownLocation(
+                'State', 
+                locationState.states.map((s) => MapEntry<int, String>(s.id, s.name)).toList(),
+                _selectedState, 
+                (v) {
+                  setState(() {
+                    _selectedState = v;
+                    _selectedCity = null;
+                  });
+                  if (v != null) ref.read(locationProvider.notifier).fetchCities(v);
+                }
+              ) : const SizedBox.shrink(),
+            ),
+            const SizedBox(height: 20),
+            row2(
+              _selectedState != null ? _dropdownLocation(
+                'City', 
+                locationState.cities.map((c) => MapEntry<int, String>(c.id, c.name)).toList(),
+                _selectedCity, 
+                (v) => setState(() => _selectedCity = v)
+              ) : const SizedBox.shrink(),
+              _commissionDropdown(),
+            ),
             const SizedBox(height: 20),
           ],
-          row2(_buildTextField('City', _cityCtrl), _buildTextField('State', _stateCtrl)),
-          const SizedBox(height: 20),
           row2(_buildTextField('Email *', _emailCtrl, readOnly: true), _buildPhoneField(_mobileCtrl)),
           const SizedBox(height: 20),
-          _buildTextField('Address', _addressCtrl),
+          _buildTextField('Address', _addressCtrl, suffixIcon: IconButton(
+            icon: _isFetchingLocation 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.my_location, color: AppColors.primary),
+            onPressed: _isFetchingLocation ? null : _fetchCurrentLocationAddress,
+            tooltip: 'Fetch current location',
+          )),
 
           const SizedBox(height: 32),
           Align(
             alignment: Alignment.centerRight,
-            child: ElevatedButton(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton(
+                  onPressed: _isDeletingAccount ? null : _showDeleteAccountConfirmation,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  ),
+                  child: _isDeletingAccount
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.red, strokeWidth: 2))
+                      : const Text('Delete Account'),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton(
               onPressed: _isUpdating ? null : () async {
                 if (profile != null) {
                   setState(() => _isUpdating = true);
@@ -300,8 +495,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     city: _cityCtrl.text.trim(),
                     stateStr: _stateCtrl.text.trim(),
                     country: _role == 'HANDYMAN' ? _countryCtrl.text.trim() : null,
-                    selectAddress: _role == 'HANDYMAN' ? _selectAddressCtrl.text.trim() : null,
-                    handymanCommission: _role == 'HANDYMAN' ? _commissionCtrl.text.trim() : null,
+                    countryId: _role == 'HANDYMAN' ? _selectedCountry : null,
+                    stateId: _role == 'HANDYMAN' ? _selectedState : null,
+                    cityId: _role == 'HANDYMAN' ? _selectedCity : null,
+                    handymanCommission: _role == 'HANDYMAN' 
+                        ? (_getInitialCommissionId(ref.read(handymanCommissionProvider).items, _commissionCtrl.text) ?? _commissionCtrl.text.trim()) 
+                        : null,
                   );
                   if (mounted) setState(() => _isUpdating = false);
                 }
@@ -315,8 +514,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Text('Update'),
             ),
-          ),
-        ],
+          ]),
+          )],
       );
 
       if (isWide) {
@@ -404,11 +603,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           width: 500,
           child: Column(
             children: [
-              _buildTextField('Old Password *', _oldPassCtrl, obscure: true),
+              _buildTextField(
+                'Old Password *', 
+                _oldPassCtrl, 
+                obscure: _obscureOldPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureOldPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: AppColors.textMuted),
+                  onPressed: () => setState(() => _obscureOldPassword = !_obscureOldPassword),
+                ),
+              ),
               const SizedBox(height: 24),
-              _buildTextField('New Password *', _newPassCtrl, obscure: true),
+              _buildTextField(
+                'New Password *', 
+                _newPassCtrl, 
+                obscure: _obscureNewPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureNewPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: AppColors.textMuted),
+                  onPressed: () => setState(() => _obscureNewPassword = !_obscureNewPassword),
+                ),
+              ),
               const SizedBox(height: 24),
-              _buildTextField('Confirm New Password *', _confirmPassCtrl, obscure: true),
+              _buildTextField(
+                'Confirm New Password *', 
+                _confirmPassCtrl, 
+                obscure: _obscureConfirmPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: AppColors.textMuted),
+                  onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                ),
+              ),
               const SizedBox(height: 32),
               Align(
                 alignment: Alignment.centerRight,
@@ -431,10 +654,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         }
                       );
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(response['message'] ?? 'Password changed successfully', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
-                        _oldPassCtrl.clear();
-                        _newPassCtrl.clear();
-                        _confirmPassCtrl.clear();
+                        bool isSuccess = false;
+                        String msg = 'Failed to change password';
+
+                        if (response != null && response['status'] == 1) {
+                          final data = response['data'];
+                          if (data is Map) {
+                            msg = data['message']?.toString() ?? 'Password changed successfully';
+                            if (data.containsKey('status')) {
+                              isSuccess = data['status'] == true || data['status'] == 1;
+                            } else {
+                              isSuccess = !msg.toLowerCase().contains('not match') && 
+                                          !msg.toLowerCase().contains('incorrect') && 
+                                          !msg.toLowerCase().contains('fail') && 
+                                          !msg.toLowerCase().contains('error') && 
+                                          !msg.toLowerCase().contains('invalid');
+                            }
+                          } else {
+                            isSuccess = true;
+                            msg = 'Password changed successfully';
+                          }
+                        } else {
+                          msg = response?['message']?.toString() ?? 'Failed to change password';
+                        }
+
+                        if (isSuccess) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg, style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+                          _oldPassCtrl.clear();
+                          _newPassCtrl.clear();
+                          _confirmPassCtrl.clear();
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg, style: const TextStyle(color: Colors.white)), backgroundColor: Colors.red));
+                        }
                       }
                     } catch (e) {
                       if (context.mounted) {
@@ -459,7 +710,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // ─────────────────────── FIELD HELPERS ───────────────────────
 
-  Widget _buildTextField(String label, TextEditingController controller, {bool obscure = false, bool readOnly = false, int maxLines = 1}) {
+  Widget _buildTextField(String label, TextEditingController controller, {bool obscure = false, bool readOnly = false, int maxLines = 1, Widget? suffixIcon}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -484,6 +735,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             filled: readOnly,
             fillColor: readOnly ? AppColors.backgroundScaffold : null,
+            suffixIcon: suffixIcon,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.primary)),
@@ -541,6 +793,92 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _dropdownLocation(String lbl, List<MapEntry<int, String>> items, int? value, ValueChanged<int?> onChanged) {
+    final hasValue = items.any((e) => e.key == value);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      RichText(
+        text: TextSpan(
+          text: lbl.replaceAll(' *', ''),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+          children: lbl.contains('*') ? [const TextSpan(text: ' *', style: TextStyle(color: Colors.red))] : [],
+        ),
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<int>(
+        value: hasValue ? value : null,
+        hint: Text(lbl.replaceAll(' *', ''), style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+        items: items.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value, style: const TextStyle(fontSize: 13)))).toList(),
+        onChanged: onChanged,
+        decoration: InputDecoration(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.primary)),
+        ),
+        isExpanded: true,
+        icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.textMuted),
+      ),
+    ]);
+  }
+
+  String? _getInitialCommissionId(List<dynamic> items, String currentVal) {
+    if (currentVal.isEmpty) return null;
+    if (items.any((c) => c.id.toString() == currentVal)) return currentVal;
+    if (items.any((c) => c.name == currentVal)) return items.firstWhere((c) => c.name == currentVal).id.toString();
+    for (var c in items) {
+      if (currentVal == '₹${c.commission.toStringAsFixed(2)}' || currentVal == '${c.commission}%' || currentVal.replaceAll(RegExp(r'[^0-9.]'), '') == c.commission.toString()) {
+        return c.id.toString();
+      }
+    }
+    return null;
+  }
+
+  Widget _commissionDropdown() {
+    final commissionState = ref.watch(handymanCommissionProvider);
+    final items = commissionState.items;
+    final initialValue = _getInitialCommissionId(items, _commissionCtrl.text);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RichText(
+          text: const TextSpan(
+            text: 'Handyman Commission',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+          ),
+        ),
+        const SizedBox(height: 8),
+        commissionState.isLoading
+            ? const SizedBox(
+                height: 48,
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+              )
+            : DropdownButtonFormField<String>(
+                value: initialValue,
+                hint: const Text('Select Commission', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                items: items.map((c) {
+                  final label = c.type == 'Percent'
+                      ? '${c.name} (${c.commission}%)'
+                      : '${c.name} (₹${c.commission.toStringAsFixed(2)})';
+                  return DropdownMenuItem<String>(
+                    value: c.id.toString(),
+                    child: Text(label, style: const TextStyle(fontSize: 13)),
+                  );
+                }).toList(),
+                onChanged: (v) => setState(() => _commissionCtrl.text = v ?? ''),
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.borderLight)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.primary)),
+                ),
+                isExpanded: true,
+                icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.textMuted),
+              ),
       ],
     );
   }
